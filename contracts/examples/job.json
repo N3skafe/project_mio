@@ -1,0 +1,13 @@
+{
+  "phase": "phase-2",
+  "implemented": true,
+  "id": "job-00000001",
+  "project_id": "demo-api",
+  "task_id": "api-db-check",
+  "status": "QUEUED",
+  "created_at": "2026-10-06T10:00:00Z",
+  "started_at": null,
+  "finished_at": null,
+  "cancel_requested_at": null,
+  "output_truncated": false
+}

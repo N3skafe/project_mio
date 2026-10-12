@@ -1,0 +1,24 @@
+{
+  "phase": "phase-4",
+  "implemented": true,
+  "id": "case-0001",
+  "job_id": "job-0001",
+  "project_id": "trusted-sample",
+  "draft_label": "DB_CONNECTION",
+  "draft_source": "RULE_BASED",
+  "current_label": "DB_CONNECTION",
+  "review_status": "DRAFT",
+  "confirmed_label": null,
+  "rule_version": "rules-1",
+  "matched_keyword": "postgresql",
+  "origin": "SESSION",
+  "raw_text": "org.postgresql.util.PSQLException: Connection to localhost:5432 refused",
+  "revisions": [
+    {
+      "label": "DB_CONNECTION",
+      "review_status": "DRAFT",
+      "source": "RULE_BASED",
+      "note": "규칙 기반 초안입니다. 규칙 버전 rules-1. 일치 키워드는 정답 확률이 아닙니다."
+    }
+  ]
+}

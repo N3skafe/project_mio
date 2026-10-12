@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: maidops
+      POSTGRES_PASSWORD: maidops
+      POSTGRES_DB: maidops
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maidops -d maidops"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ../backend
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/maidops
+      SPRING_DATASOURCE_USERNAME: maidops
+      SPRING_DATASOURCE_PASSWORD: maidops
+      MAIDOPS_WORKSPACE_ROOT: /trusted
+      MAIDOPS_MODEL_DIR: /models
+    volumes:
+      - ../fixtures/trusted-projects:/trusted:ro
+      - maidops-models:/models
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  worker:
+    build:
+      context: ../worker
+    environment:
+      MAIDOPS_BACKEND_URL: http://backend:8080
+      MAIDOPS_WORKSPACE_ROOT: /trusted
+      MAIDOPS_WORKER_ALIVE_FILE: /tmp/maidops-worker-alive
+    volumes:
+      - ../fixtures/trusted-projects:/trusted:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,time; p='/tmp/maidops-worker-alive'; assert os.path.exists(p) and time.time()-os.path.getmtime(p)<30"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  trainer:
+    build:
+      context: ../trainer
+    environment:
+      MAIDOPS_BACKEND_URL: http://backend:8080
+      MAIDOPS_MODEL_DIR: /models
+      MAIDOPS_TRAIN_DEVICE: cpu
+      MAIDOPS_TRAINER_ALIVE_FILE: /tmp/maidops-trainer-alive
+    volumes:
+      - maidops-models:/models
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,time; p='/tmp/maidops-trainer-alive'; assert os.path.exists(p) and time.time()-os.path.getmtime(p)<30"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+volumes:
+  maidops-models:

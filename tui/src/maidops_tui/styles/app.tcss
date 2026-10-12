@@ -1,0 +1,202 @@
+$maid-bg: #0e1624;
+$maid-fg: #d5d8de;
+$maid-surface: #162033;
+$maid-panel: #1b283d;
+$maid-line: #31425f;
+$maid-rose: #f0b4b4;
+$maid-blue: #9ec1f0;
+
+App {
+    background: $maid-bg;
+    color: $maid-fg;
+}
+
+#top-bar {
+    height: 1;
+    background: #121c2e;
+    color: $maid-fg;
+    padding: 0 1;
+}
+
+#body {
+    height: 1fr;
+}
+
+Screen.-wide #body {
+    layout: horizontal;
+}
+
+Screen.-narrow #body {
+    layout: vertical;
+}
+
+#character {
+    background: $maid-surface;
+    border: solid $maid-rose;
+    padding: 0 1;
+}
+
+Screen.-wide #character {
+    width: 32;
+    height: 1fr;
+}
+
+Screen.-narrow #character {
+    width: 100%;
+    height: 7;
+}
+
+#main {
+    width: 1fr;
+    height: 1fr;
+    background: $maid-panel;
+    border: solid $maid-blue;
+    padding: 0 1;
+}
+
+#views {
+    height: 1fr;
+}
+
+#workspace, #review, #lab, #history {
+    height: 1fr;
+}
+
+#activity-log {
+    height: 5;
+    background: #10192a;
+    border: solid $maid-line;
+    margin: 0 1;
+}
+
+Screen.-narrow #activity-log {
+    height: 3;
+}
+
+#command-row {
+    height: 3;
+    padding: 0 1;
+}
+
+#command-label {
+    width: 6;
+    content-align: left middle;
+}
+
+#command-input {
+    width: 1fr;
+}
+
+#run-plan {
+    height: auto;
+    max-height: 6;
+}
+
+#task-table {
+    height: 8;
+}
+
+#project-table {
+    height: 6;
+}
+
+#jobs-table {
+    height: 5;
+}
+
+#job-log {
+    height: 1fr;
+    min-height: 4;
+    background: #10192a;
+    border: solid $maid-line;
+}
+
+#workspace-actions, #review-actions, #lab-actions, #history-search-row {
+    height: 3;
+}
+
+#review-body {
+    height: 1fr;
+}
+
+Screen.-wide #review-body {
+    layout: horizontal;
+}
+
+Screen.-narrow #review-body {
+    layout: vertical;
+}
+
+#error-table {
+    width: 38;
+    height: 1fr;
+    min-height: 6;
+}
+
+Screen.-narrow #error-table {
+    width: 100%;
+    height: 6;
+}
+
+#review-detail {
+    width: 1fr;
+    height: 1fr;
+}
+
+#history-query {
+    width: 1fr;
+}
+
+#history-results {
+    height: 1fr;
+    min-height: 4;
+    background: #10192a;
+    border: solid $maid-line;
+}
+
+#lab-notice {
+    color: $maid-rose;
+    text-style: bold;
+    height: auto;
+    max-height: 3;
+}
+
+#model-select {
+    height: 3;
+    width: 1fr;
+}
+
+#lab-summary {
+    height: 1fr;
+    min-height: 4;
+}
+
+#character-line {
+    color: $maid-rose;
+}
+
+.view-title {
+    color: $maid-blue;
+    text-style: bold;
+}
+
+Button {
+    margin: 0 1 0 0;
+}
+
+Input:focus, DataTable:focus, Select:focus, Button:focus {
+    border: heavy $maid-blue;
+}
+
+#help-body {
+    background: $maid-surface;
+    border: solid $maid-rose;
+    padding: 1 2;
+    width: 80%;
+    height: 80%;
+    margin: 1 2;
+}
+
+Footer {
+    background: #121c2e;
+}
