@@ -58,11 +58,18 @@ def format_header(
 
 
 def format_job_meta(job: Job, now: datetime) -> str:
-    trimmed = "  출력 잘림" if job.output_truncated else ""
+    notes: list[str] = []
+    if job.termination_reason in {"OUTPUT_LIMIT_EXCEEDED", "SUPERVISION_FAILED", "TIMED_OUT"}:
+        notes.append(job.termination_reason)
+    if job.output_truncated and job.termination_reason != "OUTPUT_LIMIT_EXCEEDED":
+        notes.append("출력 잘림")
+    if job.log_storage_incomplete:
+        notes.append("로그 일부 미저장")
+    suffix = "".join(f"  {note}" for note in notes)
     return (
         f"{job.id}  {display_status(job.status)}  "
         f"경과 {format_elapsed(job.elapsed_seconds(now))}  "
-        f"task {job.task_id}{trimmed}"
+        f"task {job.task_id}{suffix}"
     )
 
 
@@ -164,13 +171,23 @@ def lab_notice(status: LabStatus) -> str:
 
 
 def format_model_comparison(model: ModelSummary) -> str:
+    verified = model.metric_policy == "supported-class-macro-f1-v2" and model.checkpoint_evaluated
+    if verified:
+        score_line = f"실제 표본이 있는 클래스 기준 macro F1: {_metric(model.macro_f1)}"
+        policy_line = "평가 정책 supported-class-macro-f1-v2. 저장 파일을 다시 로드한 뒤의 테스트 분할 점수입니다."
+    else:
+        score_line = f"기록된 macro F1: {_metric(model.macro_f1)}"
+        policy_line = "정책 미확인 legacy 기록입니다. 현재 macro F1과 같은 의미로 비교하지 않습니다."
     lines = [
         f"모델 {model.id}  장치 {model.device}  기본={'예' if model.is_default else '아니오'}",
-        f"macro F1: {_metric(model.macro_f1)}",
+        score_line,
+        policy_line,
         f"규칙 baseline macro F1: {_metric(model.baseline_macro_f1)}",
         model.probability_note,
         "클래스별 모델 / 규칙 baseline:",
     ]
+    if verified and model.included_labels:
+        lines.insert(-1, "macro에 포함한 클래스: " + ", ".join(model.included_labels))
     baseline = {score.label: score for score in model.baseline_per_class}
     for score in model.per_class:
         other = baseline.get(score.label)

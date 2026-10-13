@@ -73,12 +73,10 @@ $env:MAIDOPS_BACKEND_URL = "http://127.0.0.1:8080"
 .\.venv\Scripts\python -m maidops_tui
 ```
 
-백엔드를 호스트에서 직접 실행하려면 JDK 21과 PostgreSQL이 필요합니다. 이 PC의 기본 `JAVA_HOME`은 JDK 11이고, `C:\Program Files\Java\jdk-21`은 없습니다. 빌드 전에 JDK 21을 `JAVA_HOME`으로 지정합니다.
+백엔드를 호스트에서 직접 실행하려면 JDK 21과 PostgreSQL이 필요합니다. 기본 `JAVA_HOME`이 JDK 11이어도 `scripts/test-backend.ps1`이 `JavaHome`, `JAVA_HOME`, PATH, 설치된 JDK 디렉터리에서 `java`와 `javac`가 모두 21인 경로를 고릅니다. 폴더 이름이 `jdk-21`일 필요는 없습니다. 스크립트는 Maven Wrapper를 쓰고, 끝난 뒤 프로세스의 `JAVA_HOME`과 PATH를 되돌립니다.
 
 ```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
-$env:Path = "$env:JAVA_HOME\bin;" + $env:Path
-.\backend\mvnw.cmd -f backend\pom.xml test
+.\scripts\test-backend.ps1
 ```
 
 저장소 루트에서 위 명령을 실행합니다. 통합 테스트는 Docker 없이 내장 PostgreSQL을 사용합니다.

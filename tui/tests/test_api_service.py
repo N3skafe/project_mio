@@ -102,6 +102,7 @@ async def test_api_service_keeps_queued_job() -> None:
         job = await service.create_test_job()
         assert job.status is JobStatus.QUEUED
         assert job.started_at is None
+        assert job.termination_reason is None
         output = await service.get_job_output(job.id)
         assert all("RESULT PASS" not in line.text and "RESULT FAIL" not in line.text for line in output)
         assert service.connection_label() == "CONNECTED(실행 워커 없음)"

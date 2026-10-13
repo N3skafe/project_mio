@@ -1,0 +1,197 @@
+[
+  {
+    "name": "health",
+    "status": "PASS",
+    "detail": "{'authentication': 'NONE', 'worker': 'CONNECTED', 'database': 'UP', 'status': 'UP'}"
+  },
+  {
+    "name": "empty-db-migrations",
+    "status": "PASS",
+    "detail": "1:true,2:true,3:true,4:true,5:true,6:true,7:true,8:true"
+  },
+  {
+    "name": "audit-tasks",
+    "status": "PASS",
+    "detail": "격리 DB에 감사 작업 5개를 등록했다."
+  },
+  {
+    "name": "pass-job",
+    "status": "PASS",
+    "detail": "id=job-00000004 status=SUCCEEDED reason=COMPLETED running_seen=True log_before_idle=True"
+  },
+  {
+    "name": "fail-job-case",
+    "status": "PASS",
+    "detail": "id=job-00000005 status=FAILED reason=FAILED case=case-00000003"
+  },
+  {
+    "name": "review-approve",
+    "status": "PASS",
+    "detail": "APPROVED"
+  },
+  {
+    "name": "review-revise",
+    "status": "PASS",
+    "detail": "{'id': 'case-00000004', 'job_id': 'job-00000006', 'project_id': 'trusted-sample', 'raw_text': 'exit_code=2\\ntimed_out=false\\nQUEUED. 등록된 명령이 있으면 워커가 가져갑니다. 아직 실행 결과는 없습니다.\\nRUNNING. owner=audit-worker-1\\nboom\\nRESULT FAIL exit_code=2\\n', 'draft_label': 'OTHER', 'draft_source': 'RULE_BASED', 'current_label': 'INPUT_VALIDATION', 'review_status': 'REVISED', 'origin': 'SESSION', 'rule_version': 'rules-1', 'matched_keyword': None, 'confirmed_label': 'INPUT_VALIDATION', 'inference_state': 'READY', 'model_version_id': None, 'created_at': '2026-10-13T13:41:54.859597Z', 'revisions': [{'label': 'OTHER', 'review_status': 'DRAFT', 'source': 'RULE_BASED', 'note': '규칙 기반 초안입니다. 규칙 버전 rules-1. 일치 키워드: 없음. 이 값은 정답 확률이 아닙니다.', 'created_at': '2026-10-13T13:41:54.859597Z'}, {'label': 'INPUT_VALIDATION', 'review_status': 'REVISED', 'source': 'USER', 'note': '사용자가 라벨을 수정했습니다. 학습은 시작하지 않습니다.', 'created_at': '2026-10-13T13:41:54.962159970Z'}]}"
+  },
+  {
+    "name": "resolution",
+    "status": "PASS",
+    "detail": "200"
+  },
+  {
+    "name": "search",
+    "status": "PASS",
+    "detail": "status=200 hits=1"
+  },
+  {
+    "name": "review-defer",
+    "status": "PASS",
+    "detail": "DEFERRED"
+  },
+  {
+    "name": "incremental-log",
+    "status": "PASS",
+    "detail": "id=job-00000008 partial=True status=SUCCEEDED lines=['QUEUED. 등록된 명령이 있으면 워커가 가져갑니다. 아직 실행 결과는 없습니다.', 'RUNNING. owner=audit-worker-1', 'tick-0', 'tick-1', 'tick-2', 'tick-3', 'tick-4', 'tick-5', 'RESULT PASS exit_code=0']"
+  },
+  {
+    "name": "server-trim",
+    "status": "FAIL",
+    "detail": "status=SUCCEEDED reason=COMPLETED truncated=False"
+  },
+  {
+    "name": "output-limit",
+    "status": "PASS",
+    "detail": "id=job-00000010 status=FAILED reason=OUTPUT_LIMIT_EXCEEDED"
+  },
+  {
+    "name": "timeout",
+    "status": "PASS",
+    "detail": "id=job-00000011 status=FAILED reason=TIMED_OUT"
+  },
+  {
+    "name": "cancel-and-process-tree",
+    "status": "FAIL",
+    "detail": "status=CANCELLED reason=CANCELLED saw_process=False leftover=False"
+  },
+  {
+    "name": "idempotency-parallel",
+    "status": "FAIL",
+    "detail": "codes=[201, 201] ids={'job-00000013'}"
+  },
+  {
+    "name": "manual-claim",
+    "status": "PASS",
+    "detail": "200 {'job_id': 'job-00000014', 'argv': ['{python}', '/trusted/sample/pass_check.py'], 'working_directory': '/trusted/sample', 'timeout_seconds': 10}"
+  },
+  {
+    "name": "batch-once",
+    "status": "PASS",
+    "detail": "204"
+  },
+  {
+    "name": "batch-replay",
+    "status": "PASS",
+    "detail": "204 204"
+  },
+  {
+    "name": "batch-conflict",
+    "status": "PASS",
+    "detail": "409"
+  },
+  {
+    "name": "other-worker-rejected",
+    "status": "PASS",
+    "detail": "409"
+  },
+  {
+    "name": "process-not-exited",
+    "status": "PASS",
+    "detail": "RUNNING"
+  },
+  {
+    "name": "finish-completed",
+    "status": "PASS",
+    "detail": "SUCCEEDED"
+  },
+  {
+    "name": "batch-after-finish",
+    "status": "PASS",
+    "detail": "409"
+  },
+  {
+    "name": "batch-stored-once",
+    "status": "PASS",
+    "detail": "1"
+  },
+  {
+    "name": "lease-claim",
+    "status": "PASS",
+    "detail": "{'job_id': 'job-00000015', 'argv': ['{python}', '/trusted/sample/hang_check.py'], 'working_directory': '/trusted/sample', 'timeout_seconds': 8}"
+  },
+  {
+    "name": "stale-other-worker",
+    "status": "PASS",
+    "detail": "409"
+  },
+  {
+    "name": "job-lease-expired",
+    "status": "PASS",
+    "detail": "status=FAILED"
+  },
+  {
+    "name": "same-worker-late-write",
+    "status": "PASS",
+    "detail": "beat=409 events=409 finish=200 status=FAILED"
+  },
+  {
+    "name": "no-lease-generation",
+    "status": "NOT_APPLICABLE",
+    "detail": "소유권은 worker_id뿐이다. 다른 worker 거부와 만료 후 상태 보호를 확인했고, 세대 토큰은 없다."
+  },
+  {
+    "name": "training-lease",
+    "status": "BLOCKED",
+    "detail": "학습을 만들지 못했다: 409 {'code': 'STATE', 'message': '확정 사례가 3건입니다. 학습에는 20건 이상이 필요합니다. 학습 분할이 0건입니다. 8건 이상이 필요합니다. 검증 분할이 0건입니다. 4건 이상이 필요합니다. 테스트 분할이 3건입니다. 4건 이상이 필요합니다. 학습 분할의 라벨이 0종입니다. 2종 이상이 필요합니다. 검증 분할의 라벨이 0종입니다. 2종 이상이 필요합니다. 초안 4건과 보류 1건은 확정 라벨이 아니므로 학습 수에 넣지 않았습니다.', 'example': '확정 라벨을 더 모은 뒤 다시 요청하세요.'}"
+  },
+  {
+    "name": "training-gate",
+    "status": "PASS",
+    "detail": "approved=25 eligible=True reasons=[]"
+  },
+  {
+    "name": "cpu-training",
+    "status": "PASS",
+    "detail": "status=SUCCEEDED policy=supported-class-macro-f1-v2 evaluated=True default=False f1=0.05714285714285714 error=None"
+  },
+  {
+    "name": "checkpoint-files",
+    "status": "FAIL",
+    "detail": "model=mv-00000001 api_checksum=None files=b33e0c05ff218464e5e0c48db303d55285b3494209849f3d2a75b13a88939694  /models/mv-00000001.pt\n660fabaf03a5df837309f461cd667edbe8f3d3ba4bd2c442664510cb2336407a  /models/mv-00000001.meta.json err="
+  },
+  {
+    "name": "select-default",
+    "status": "PASS",
+    "detail": "200"
+  },
+  {
+    "name": "model-draft",
+    "status": "PASS",
+    "detail": "case={'id': 'case-00000034', 'draft_source': 'MODEL', 'inference_state': 'READY', 'draft_label': 'AUTH_PERMISSION', 'model_version_id': 'mv-00000001'}"
+  },
+  {
+    "name": "restart",
+    "status": "FAIL",
+    "detail": "RemoteDisconnected: Remote end closed connection without response"
+  },
+  {
+    "name": "tui",
+    "status": "FAIL",
+    "detail": "FileNotFoundError: [WinError 2] 지정된 파일을 찾을 수 없습니다"
+  },
+  {
+    "name": "supervision-live",
+    "status": "BLOCKED",
+    "detail": "상태 조회 예외를 격리 스택에서 안전하게 주입하지 않았다. 제품 단위 테스트와 별개다."
+  }
+]

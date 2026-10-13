@@ -51,7 +51,10 @@ public final class LabPayloads {
             Double precision,
             Double recall,
             Double f1,
-            int support) {
+            int support,
+            int predictedCount,
+            int falsePositives,
+            boolean includedInMacro) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -72,7 +75,12 @@ public final class LabPayloads {
             List<ClassScoreResponse> baselinePerClass,
             List<List<Integer>> baselineConfusionMatrix,
             String probabilityNote,
-            @JsonProperty("is_default") boolean defaultModel) {
+            @JsonProperty("is_default") boolean defaultModel,
+            String metricPolicy,
+            List<String> includedLabels,
+            Integer evaluationSampleCount,
+            String evaluationFingerprint,
+            boolean checkpointEvaluated) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -143,7 +151,10 @@ public final class LabPayloads {
             Double precision,
             Double recall,
             Double f1,
-            @NotNull Integer support) {
+            @NotNull Integer support,
+            @NotNull Integer predictedCount,
+            @NotNull Integer falsePositives,
+            @NotNull Boolean includedInMacro) {
     }
 
     public record CompleteTrainingRequest(
@@ -158,7 +169,13 @@ public final class LabPayloads {
             @NotNull List<List<Integer>> confusionMatrix,
             @NotNull Double baselineMacroF1,
             @Valid @NotNull @Size(min = 5, max = 5) List<ClassMetricRequest> baselinePerClass,
-            @NotNull List<List<Integer>> baselineConfusionMatrix) {
+            @NotNull List<List<Integer>> baselineConfusionMatrix,
+            @NotBlank String metricPolicy,
+            @NotNull @Size(min = 5, max = 5) List<String> labelOrder,
+            @NotNull List<String> includedLabels,
+            @NotNull Integer evaluationSampleCount,
+            @NotBlank String evaluationFingerprint,
+            @NotNull Boolean checkpointEvaluated) {
     }
 
     public record FailTrainingRequest(@NotBlank @Size(max = 2000) String message) {

@@ -25,6 +25,8 @@ public final class TrainingPolicy {
     public static final String EMBEDDING_ID = "hashing-char-ngram-v1";
     public static final String SPLIT_POLICY = "split-1";
     public static final String PROBABILITY_NOTE = "softmax 출력은 보정된 정답 확률이 아닙니다. 점수는 테스트 분할에서 센 값입니다.";
+    /** 학습기가 쓰는 상한과 같다. 이 값을 넘는 파일은 읽지 않는다. */
+    public static final int MAX_MODEL_BYTES = 8 * 1024 * 1024;
 
     private TrainingPolicy() {
     }

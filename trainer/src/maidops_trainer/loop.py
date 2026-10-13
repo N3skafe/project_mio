@@ -69,19 +69,22 @@ def _train_claimed(api: TrainerApi, claimed: dict[str, object], model_dir: Path,
             if body.get("cancel_requested") is True:
                 raise TrainError("사용자가 학습 취소를 요청했습니다. 모델을 저장하지 않습니다.")
 
+        version = code_version()
         result = train_classifier(
             rows,
             model_path,
             seed=int(claimed["seed"]),
             device_request=device,
             heartbeat=heartbeat,
+            training_dataset_fingerprint=str(claimed["dataset_fingerprint"]),
+            code_version=version,
         )
         api.complete(
             run_id,
             {
                 "embedding_id": str(claimed["embedding_id"]),
                 "label_schema_version": str(claimed["label_schema_version"]),
-                "code_version": code_version(),
+                "code_version": version,
                 "device": result.device,
                 "seed": int(claimed["seed"]),
                 "config": result.config,
@@ -91,6 +94,12 @@ def _train_claimed(api: TrainerApi, claimed: dict[str, object], model_dir: Path,
                 "baseline_macro_f1": result.baseline_macro_f1,
                 "baseline_per_class": result.baseline_per_class,
                 "baseline_confusion_matrix": result.baseline_confusion,
+                "metric_policy": result.metric_policy,
+                "label_order": result.label_order,
+                "included_labels": result.included_labels,
+                "evaluation_sample_count": result.evaluation_sample_count,
+                "evaluation_fingerprint": result.evaluation_fingerprint,
+                "checkpoint_evaluated": result.checkpoint_evaluated,
             },
         )
     except (TrainError, OSError, ValueError, KeyError) as exc:

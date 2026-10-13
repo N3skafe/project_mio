@@ -28,24 +28,47 @@ def make_app(**overrides: object) -> MaidOpsApp:
 
 
 async def submit(pilot: Pilot[None], app: MaidOpsApp, text: str) -> None:
+    seen = app.command_count
     box = app.query_one("#command-input", Input)
     box.focus()
     box.value = text
     await box.action_submit()
-    await pilot.pause()
+    await wait_for(
+        pilot,
+        lambda: app.command_count > seen,
+        app=app,
+        description="명령 처리",
+    )
 
 
 def rich_log_text(log: RichLog) -> str:
     return "\n".join(getattr(strip, "text", str(strip)) for strip in log.lines)
 
 
-async def wait_for(pilot: Pilot[None], predicate, timeout: float = 3.0) -> None:
+def app_state_text(app: MaidOpsApp) -> str:
+    focused = app.focused.id if app.focused is not None and app.focused.id else "없음"
+    screen = type(app.screen).__name__
+    recent = list(app.activity_lines[-12:])
+    return (
+        f"screen={screen} focused={focused} command_count={app.command_count} "
+        f"activity={recent!r}"
+    )
+
+
+async def wait_for(
+    pilot: Pilot[None],
+    predicate,
+    timeout: float = 3.0,
+    app: MaidOpsApp | None = None,
+    description: str = "조건",
+) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
             return
         await pilot.pause(0.05)
-    raise AssertionError("조건이 제한 시간 안에 충족되지 않았습니다.")
+    detail = f" {app_state_text(app)}" if app is not None else ""
+    raise AssertionError(f"{description} 완료를 {timeout:.1f}초 안에 확인하지 못했습니다.{detail}")
 
 
 async def wait_for_terminal_jobs(pilot: Pilot[None], app: MaidOpsApp, timeout: float = 3.0):
@@ -58,4 +81,4 @@ async def wait_for_terminal_jobs(pilot: Pilot[None], app: MaidOpsApp, timeout: f
             await pilot.pause()
             return jobs
         await pilot.pause(0.05)
-    raise AssertionError(f"작업이 끝나지 않았습니다: {app.activity_lines}")
+    raise AssertionError(f"작업이 끝나지 않았습니다. {app_state_text(app)}")

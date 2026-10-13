@@ -6,22 +6,19 @@ PHASE 2 API입니다. Java 21, Spring Boot 3.5.16, Flyway, PostgreSQL을 사용�
 
 ## Windows에서 테스트
 
+저장소 루트에서 `..\scripts\test-backend.ps1`을 실행합니다. 스크립트는 `java`와 `javac`가 모두 21인 JDK를 고르고 Maven Wrapper로 테스트한 뒤 `JAVA_HOME`과 PATH를 되돌립니다. 폴더 이름이 `jdk-21`이 아니어도 됩니다.
+
 ```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
-$env:Path = "$env:JAVA_HOME\bin;" + $env:Path
-.\mvnw.cmd -B test
+..\scripts\test-backend.ps1
 ```
 
-`backend` 디렉터리에서 실행합니다. 테스트는 내장 PostgreSQL을 내려 받아 띄웁니다. Docker는 필요 없습니다. 이 PC에는 `C:\Program Files\Java\jdk-21`이 없으므로, 그 경로가 없으면 이미 설치된 JDK 21을 `JAVA_HOME`으로 둔 뒤 같은 명령을 실행합니다.
+`backend` 디렉터리에서 직접 실행할 때는 그 JDK를 `JAVA_HOME`으로 둔 뒤 `.\mvnw.cmd -B test`를 실행합니다. 테스트는 내장 PostgreSQL을 사용합니다. Docker는 필요 없습니다.
 
 ## 실행
 
 권장 경로는 저장소의 `infra/docker-compose.yml`입니다. 호스트에서만 실행할 때는 JDK 21과 `127.0.0.1:5432`의 PostgreSQL이 필요하고, 기본 계정은 로컬 전용 `maidops` / `maidops`입니다.
 
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
-.\mvnw.cmd -B spring-boot:run
-```
+호스트에서 서버를 띄울 때는 JDK 21을 `JAVA_HOME`으로 둔 뒤 `.\mvnw.cmd -B spring-boot:run`을 실행합니다. `scripts/test-backend.ps1 -ResolveOnly`로 그 JDK 경로를 확인할 수 있습니다.
 
 기본 바인딩은 `127.0.0.1:8080`입니다. 인증이 없으므로 이 주소를 외부에 열지 않습니다.
 

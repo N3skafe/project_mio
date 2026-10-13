@@ -1,0 +1,158 @@
+{
+  "metric_policy": "supported-class-macro-f1-v2",
+  "label_order": [
+    "DB_CONNECTION",
+    "AUTH_PERMISSION",
+    "EXTERNAL_NETWORK",
+    "INPUT_VALIDATION",
+    "OTHER"
+  ],
+  "row_meaning": "actual",
+  "column_meaning": "predicted",
+  "support_definition": "TP+FN, the row sum",
+  "predicted_count_definition": "TP+FP, the column sum",
+  "macro_definition": "Unweighted mean of F1 over classes with support > 0. At least two such classes are required.",
+  "unsupported_class_with_predictions": "predicted_count and false_positives stay. precision is 0. recall and F1 are null. The class is excluded from macro because there is no actual sample.",
+  "cases": [
+    {
+      "id": "f02-unpredicted-supported-class",
+      "matrix": [
+        [2, 0, 0, 0, 0],
+        [0, 2, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 2, 0, 0],
+        [0, 0, 0, 0, 0]
+      ],
+      "macro_f1": "2/3",
+      "evaluation_sample_count": 6,
+      "included_labels": ["DB_CONNECTION", "AUTH_PERMISSION", "INPUT_VALIDATION"],
+      "per_class": [
+        {"label": "DB_CONNECTION", "support": 2, "predicted_count": 2, "false_positives": 0, "precision": "1", "recall": "1", "f1": "1", "included_in_macro": true},
+        {"label": "AUTH_PERMISSION", "support": 2, "predicted_count": 2, "false_positives": 0, "precision": "1", "recall": "1", "f1": "1", "included_in_macro": true},
+        {"label": "EXTERNAL_NETWORK", "support": 0, "predicted_count": 2, "false_positives": 2, "precision": "0", "recall": null, "f1": null, "included_in_macro": false},
+        {"label": "INPUT_VALIDATION", "support": 2, "predicted_count": 0, "false_positives": 0, "precision": "0", "recall": "0", "f1": "0", "included_in_macro": true},
+        {"label": "OTHER", "support": 0, "predicted_count": 0, "false_positives": 0, "precision": null, "recall": null, "f1": null, "included_in_macro": false}
+      ]
+    },
+    {
+      "id": "all-wrong",
+      "matrix": [
+        [0, 0, 0, 0, 2],
+        [0, 0, 0, 0, 2],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ],
+      "macro_f1": "0",
+      "evaluation_sample_count": 4,
+      "included_labels": ["DB_CONNECTION", "AUTH_PERMISSION"]
+    },
+    {
+      "id": "perfect-two-classes",
+      "matrix": [
+        [2, 0, 0, 0, 0],
+        [0, 2, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ],
+      "macro_f1": "1",
+      "evaluation_sample_count": 4,
+      "included_labels": ["DB_CONNECTION", "AUTH_PERMISSION"]
+    },
+    {
+      "id": "single-actual-class",
+      "matrix": [
+        [3, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ],
+      "error": "unevaluable"
+    },
+    {
+      "id": "support-zero-with-predictions",
+      "matrix": [
+        [1, 0, 1, 0, 0],
+        [0, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ],
+      "macro_f1": "5/6",
+      "evaluation_sample_count": 3,
+      "included_labels": ["DB_CONNECTION", "AUTH_PERMISSION"],
+      "per_class": [
+        {"label": "EXTERNAL_NETWORK", "support": 0, "predicted_count": 1, "false_positives": 1, "precision": "0", "recall": null, "f1": null, "included_in_macro": false}
+      ]
+    },
+    {
+      "id": "empty",
+      "matrix": [
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ],
+      "error": "unevaluable"
+    },
+    {
+      "id": "negative",
+      "matrix": [
+        [1, 0, 0, 0, 0],
+        [0, 1, -1, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ],
+      "error": "negative"
+    },
+    {
+      "id": "label-order-mismatch",
+      "matrix": [
+        [2, 0, 0, 0, 0],
+        [0, 2, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ],
+      "submitted_label_order": [
+        "AUTH_PERMISSION",
+        "DB_CONNECTION",
+        "EXTERNAL_NETWORK",
+        "INPUT_VALIDATION",
+        "OTHER"
+      ],
+      "error": "label-order"
+    },
+    {
+      "id": "wrong-shape",
+      "matrix": [
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+      ],
+      "error": "shape"
+    },
+    {
+      "id": "classic-47-60",
+      "matrix": [
+        [2, 0, 0, 0, 0],
+        [0, 1, 1, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 1, 0],
+        [1, 0, 0, 0, 1]
+      ],
+      "macro_f1": "47/60",
+      "evaluation_sample_count": 7,
+      "included_labels": ["DB_CONNECTION", "AUTH_PERMISSION", "INPUT_VALIDATION", "OTHER"],
+      "per_class": [
+        {"label": "DB_CONNECTION", "support": 2, "predicted_count": 3, "false_positives": 1, "precision": "2/3", "recall": "1", "f1": "4/5", "included_in_macro": true},
+        {"label": "EXTERNAL_NETWORK", "support": 0, "predicted_count": 1, "false_positives": 1, "precision": "0", "recall": null, "f1": null, "included_in_macro": false}
+      ]
+    }
+  ]
+}

@@ -71,6 +71,7 @@ class MaidOpsApp(App[None]):
         self.config = config if config is not None else load_config()
         self.service = service if service is not None else build_service(self.config)
         self.activity_lines: list[str] = []
+        self.command_count = 0
         self.quiet = self.config.quiet
         self.pending_review_job_id: str | None = None
         self._character_state = CharacterState.IDLE
@@ -206,6 +207,7 @@ class MaidOpsApp(App[None]):
         if result.screen is not None:
             self.show_screen(result.screen)
         await self.refresh_ui()
+        self.command_count += 1
 
     def _on_service_event(self, event: ServiceEvent) -> None:
         del event

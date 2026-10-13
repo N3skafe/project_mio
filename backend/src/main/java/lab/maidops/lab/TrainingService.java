@@ -220,8 +220,19 @@ public class TrainingService {
 
     @Transactional
     public ModelVersionResponse selectDefault(String modelId) {
-        if (!models.existsById(modelId)) {
-            throw new ApiException(404, "NOT_FOUND", "모델 버전을 찾지 못했습니다: " + modelId, "/lab");
+        ModelVersionEntity selected = models.findById(modelId)
+                .orElseThrow(() -> new ApiException(404, "NOT_FOUND", "모델 버전을 찾지 못했습니다: " + modelId, "/lab"));
+        StoredMetrics selectedMetrics = readMetrics(selected.getMetricsJson());
+        // 서버는 가중치를 열지 않는다. 정책과 재로드 평가 표시가 없는 기록만 거절한다.
+        // 로컬 클라이언트가 표시를 거짓으로 보내는 것까지 막지는 못한다.
+        // 거절할 때는 기존 기본 모델을 해제하지 않는다.
+        if (!ClassificationMetrics.METRIC_POLICY.equals(selectedMetrics.metricPolicy())
+                || !selectedMetrics.checkpointEvaluated()) {
+            throw new ApiException(
+                    409,
+                    "STATE",
+                    "이 기록은 현재 평가 정책으로 검증되지 않았습니다. 기본 모델로 고르지 않고, 기존 기본 모델도 바꾸지 않습니다.",
+                    ClassificationMetrics.METRIC_POLICY);
         }
         jdbcTemplate.update("update model_versions set is_default = false");
         jdbcTemplate.update("update model_versions set is_default = true where id = ?", modelId);
@@ -353,6 +364,7 @@ public class TrainingService {
                 request.baselineConfusionMatrix(),
                 request.baselineMacroF1(),
                 request.baselinePerClass());
+        requireEvaluationContract(run, request, modelReport);
         StoredFile stored = readModelFile(run.getReservedModelId());
         String metrics = writeJson(new StoredMetrics(
                 modelReport.macroF1(),
@@ -361,7 +373,12 @@ public class TrainingService {
                 baselineReport.macroF1(),
                 baselineReport.perClass(),
                 baselineReport.confusion(),
-                TrainingPolicy.PROBABILITY_NOTE));
+                TrainingPolicy.PROBABILITY_NOTE,
+                request.metricPolicy(),
+                modelReport.perClass().stream().filter(ClassScore::includedInMacro).map(score -> score.label().name()).toList(),
+                modelReport.perClass().stream().mapToInt(ClassScore::support).sum(),
+                request.evaluationFingerprint(),
+                Boolean.TRUE.equals(request.checkpointEvaluated())));
         String config = writeJson(request.config());
         Instant now = Instant.now();
         int updated = jdbcTemplate.update(
@@ -520,8 +537,76 @@ public class TrainingService {
 
     private static List<ClassScore> toScores(List<ClassMetricRequest> items) {
         return items.stream()
-                .map(item -> new ClassScore(item.label(), item.precision(), item.recall(), item.f1(), item.support()))
+                .map(item -> new ClassScore(
+                        item.label(),
+                        item.precision(),
+                        item.recall(),
+                        item.f1(),
+                        item.support(),
+                        item.predictedCount(),
+                        item.falsePositives(),
+                        Boolean.TRUE.equals(item.includedInMacro())))
                 .toList();
+    }
+
+    private void requireEvaluationContract(TrainingRunEntity run, CompleteTrainingRequest request, Report report) {
+        if (!ClassificationMetrics.METRIC_POLICY.equals(request.metricPolicy())) {
+            throw new ApiException(400, "VALIDATION", "metric_policy가 현재 정책과 다릅니다.", ClassificationMetrics.METRIC_POLICY);
+        }
+        if (!Boolean.TRUE.equals(request.checkpointEvaluated())) {
+            throw new ApiException(
+                    400,
+                    "VALIDATION",
+                    "저장된 체크포인트를 다시 로드해 평가했다는 표시가 없습니다. 점수를 저장하지 않습니다.",
+                    "checkpoint_evaluated");
+        }
+        List<String> order = ClassificationMetrics.LABELS.stream().map(Enum::name).toList();
+        if (!order.equals(request.labelOrder())) {
+            throw new ApiException(400, "VALIDATION", "라벨 순서가 이 연구실의 순서와 다릅니다.", String.join(",", order));
+        }
+        List<String> included = report.perClass().stream()
+                .filter(ClassScore::includedInMacro)
+                .map(score -> score.label().name())
+                .toList();
+        if (!included.equals(request.includedLabels())) {
+            throw new ApiException(400, "VALIDATION", "macro에 포함한 클래스가 혼동행렬과 다릅니다.", String.join(",", included));
+        }
+        int samples = report.perClass().stream().mapToInt(ClassScore::support).sum();
+        if (samples != request.evaluationSampleCount()) {
+            throw new ApiException(400, "VALIDATION", "평가 표본 수가 혼동행렬의 support 합과 다릅니다.", Integer.toString(samples));
+        }
+        int testRows = (int) examples.findByTrainingRunIdOrderByErrorCaseIdAsc(run.getId()).stream()
+                .filter(example -> example.getSplit() == DatasetSplit.TEST)
+                .count();
+        if (samples != testRows) {
+            throw new ApiException(400, "VALIDATION", "평가 표본 수가 이 실행의 테스트 분할과 다릅니다.", Integer.toString(testRows));
+        }
+        if (!evaluationFingerprint(run.getId()).equals(request.evaluationFingerprint())) {
+            throw new ApiException(400, "VALIDATION", "평가 지문이 이 실행의 테스트 분할과 다릅니다.", "");
+        }
+        if (!Double.isFinite(request.macroF1()) || !Double.isFinite(request.baselineMacroF1())) {
+            throw new ApiException(400, "VALIDATION", "macro F1이 유한하지 않습니다. 점수를 저장하지 않습니다.", "");
+        }
+    }
+
+    private String evaluationFingerprint(String runId) {
+        java.util.Map<String, String> texts = new java.util.LinkedHashMap<>();
+        for (ErrorCaseEntity errorCase : cases.findAllById(examples.findByTrainingRunIdOrderByErrorCaseIdAsc(runId).stream()
+                .map(TrainingExampleEntity::getErrorCaseId)
+                .toList())) {
+            texts.put(errorCase.getId(), errorCase.getRawText());
+        }
+        List<EvaluationFingerprint.Row> rows = new java.util.ArrayList<>();
+        for (TrainingExampleEntity example : examples.findByTrainingRunIdOrderByErrorCaseIdAsc(runId)) {
+            if (example.getSplit() != DatasetSplit.TEST) {
+                continue;
+            }
+            rows.add(new EvaluationFingerprint.Row(
+                    example.getErrorCaseId(),
+                    example.getLabel().name(),
+                    texts.get(example.getErrorCaseId())));
+        }
+        return EvaluationFingerprint.of(rows);
     }
 
     private static void requireConfig(Map<String, Object> config) {
@@ -557,10 +642,17 @@ public class TrainingService {
         if (!resolved.startsWith(modelDir)) {
             throw new ApiException(400, "VALIDATION", "모델 경로는 모델 디렉터리 안이어야 합니다.", fileName);
         }
-        if (!Files.isRegularFile(resolved)) {
+        if (Files.isSymbolicLink(resolved)) {
+            throw new ApiException(400, "VALIDATION", "모델 파일 symlink는 읽지 않습니다.", fileName);
+        }
+        if (!Files.isRegularFile(resolved, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             throw new ApiException(409, "STATE", "모델 파일이 없습니다. 평가를 저장하지 않았습니다.", fileName);
         }
         try {
+            long size = Files.size(resolved);
+            if (size <= 0 || size > TrainingPolicy.MAX_MODEL_BYTES) {
+                throw new ApiException(400, "VALIDATION", "모델 파일 크기가 허용 범위를 벗어났습니다.", fileName);
+            }
             byte[] bytes = Files.readAllBytes(resolved);
             return new StoredFile(fileName, sha256(bytes), bytes.length);
         } catch (IOException exception) {
@@ -643,7 +735,7 @@ public class TrainingService {
     }
 
     private ModelVersionResponse toModel(ModelVersionEntity model) {
-        StoredMetrics metrics = readJson(model.getMetricsJson(), StoredMetrics.class);
+        StoredMetrics metrics = readMetrics(model.getMetricsJson());
         return new ModelVersionResponse(
                 model.getId(),
                 model.getTrainingRunId(),
@@ -661,11 +753,24 @@ public class TrainingService {
                 metrics.baselinePerClass().stream().map(TrainingService::score).toList(),
                 matrix(metrics.baselineConfusion()),
                 metrics.probabilityNote(),
-                model.isDefaultModel());
+                model.isDefaultModel(),
+                metrics.metricPolicy(),
+                metrics.includedLabels(),
+                metrics.evaluationSampleCount(),
+                metrics.evaluationFingerprint(),
+                metrics.checkpointEvaluated());
     }
 
     private static ClassScoreResponse score(ClassScore score) {
-        return new ClassScoreResponse(score.label(), score.precision(), score.recall(), score.f1(), score.support());
+        return new ClassScoreResponse(
+                score.label(),
+                score.precision(),
+                score.recall(),
+                score.f1(),
+                score.support(),
+                score.predictedCount(),
+                score.falsePositives(),
+                score.includedInMacro());
     }
 
     private static List<List<Integer>> matrix(int[][] confusion) {
@@ -718,11 +823,19 @@ public class TrainingService {
         }
     }
 
-    private <T> T readJson(String value, Class<T> type) {
+    private StoredMetrics readMetrics(String value) {
         try {
-            return json.readValue(value, type);
+            com.fasterxml.jackson.databind.JsonNode node = json.readTree(value);
+            if (node == null || !node.isObject() || (!node.has("macro_f1") && !node.has("macroF1"))) {
+                return StoredMetrics.legacy();
+            }
+            StoredMetrics metrics = json.treeToValue(node, StoredMetrics.class);
+            if (metrics == null) {
+                return StoredMetrics.legacy();
+            }
+            return metrics.withDefaults();
         } catch (JsonProcessingException exception) {
-            throw new ApiException(500, "INTERNAL", "저장된 평가를 읽지 못했습니다.", "");
+            return StoredMetrics.legacy();
         }
     }
 
@@ -773,6 +886,50 @@ public class TrainingService {
             double baselineMacroF1,
             List<ClassScore> baselinePerClass,
             int[][] baselineConfusion,
-            String probabilityNote) {
+            String probabilityNote,
+            String metricPolicy,
+            List<String> includedLabels,
+            Integer evaluationSampleCount,
+            String evaluationFingerprint,
+            boolean checkpointEvaluated) {
+        static StoredMetrics legacy() {
+            int size = ClassificationMetrics.LABELS.size();
+            return new StoredMetrics(
+                    0.0,
+                    List.of(),
+                    new int[size][size],
+                    0.0,
+                    List.of(),
+                    new int[size][size],
+                    "정책 미확인 legacy 기록입니다. 현재 macro F1과 같은 의미로 비교하지 않습니다.",
+                    null,
+                    List.of(),
+                    null,
+                    null,
+                    false);
+        }
+
+        StoredMetrics withDefaults() {
+            int size = ClassificationMetrics.LABELS.size();
+            String note = probabilityNote;
+            if (note == null || note.isBlank()) {
+                note = metricPolicy == null
+                        ? "정책 미확인 legacy 기록입니다. 현재 macro F1과 같은 의미로 비교하지 않습니다."
+                        : TrainingPolicy.PROBABILITY_NOTE;
+            }
+            return new StoredMetrics(
+                    macroF1,
+                    perClass == null ? List.of() : perClass,
+                    confusion == null ? new int[size][size] : confusion,
+                    baselineMacroF1,
+                    baselinePerClass == null ? List.of() : baselinePerClass,
+                    baselineConfusion == null ? new int[size][size] : baselineConfusion,
+                    note,
+                    metricPolicy,
+                    includedLabels == null ? List.of() : includedLabels,
+                    evaluationSampleCount,
+                    evaluationFingerprint,
+                    checkpointEvaluated);
+        }
     }
 }

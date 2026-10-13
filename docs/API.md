@@ -72,6 +72,10 @@ RUNNING -> FAILED
 
 워커가 없으면 HTTP 취소는 QUEUED를 CANCELLED로 닫습니다. 워커가 claim하면 RUNNING이 되고, 실행 중 취소는 CANCEL_REQUESTED만 남깁니다. 프로세스 종료를 확인한 finish가 CANCELLED를 기록합니다. 종료된 행은 다른 결과가 덮어쓰지 못합니다.
 
+실행 중 로그는 `POST /api/v1/worker/jobs/{id}/events`로 배치 전송합니다. 본문이 배열이면 이전처럼 한 번만 덧붙입니다. 본문이 객체이면 `batch_id`와 `lines`입니다. 같은 작업의 같은 `batch_id`와 같은 본문은 줄을 다시 저장하지 않고 204입니다. 같은 `batch_id`에 다른 본문이면 409 `CONFLICT`이고 기존 줄은 유지됩니다. 소유 워커가 아니거나, 종료된 작업의 새 배치이면 409 `STATE`입니다. 이미 저장된 배치를 소유 워커가 다시 보내면 종료 뒤에도 204입니다. 워커는 앞 배치가 확인되기 전에 다음 배치를 보내지 않습니다. 재전송은 그 배치의 저장만 다시 하며 작업을 다시 실행하지 않습니다. 서버가 확인하지 못한 배치가 있으면 finish의 `log_storage_incomplete`가 참이고, 작업 응답에도 같은 필드가 있습니다. 이 표시는 프로세스 종료 코드와 별개이며, 성공한 프로세스를 실패로 바꾸지 않습니다. 전송이 한 번도 빠지지 않는다고 보장하지는 않습니다.
+
+finish 본문은 `exit_code`, `process_exited`, `timed_out`, `output_truncated`, `termination_reason`, `log_storage_incomplete`입니다. `process_exited`가 거짓이면 성공이나 `CANCELLED`로 닫지 않습니다. `termination_reason`은 `COMPLETED`, `FAILED`, `TIMED_OUT`, `CANCELLED`, `OUTPUT_LIMIT_EXCEEDED`, `SUPERVISION_FAILED` 중 하나이거나 생략입니다. `OUTPUT_LIMIT_EXCEEDED`는 워커가 출력 바이트 한도로 프로세스를 중단한 경우이며, `exit_code`가 0이어도 `FAILED`입니다. 응답의 `output_truncated`가 참이어도 `termination_reason`이 `OUTPUT_LIMIT_EXCEEDED`가 아니면, 그 표시는 서버가 보관 줄 수를 줄인 것이며 성공 작업을 실패로 바꾸지 않습니다. `SUPERVISION_FAILED`도 성공으로 저장하지 않습니다. 실패로 닫힌 작업은 다시 큐에 넣지 않습니다.
+
 ## 오류 라벨
 
 실패하면 오류 사례 하나를 저장합니다. `draft_label`, `draft_source`, `rule_version`, `matched_keyword`는 예측 초안입니다. 기본 모델이 없으면 `draft_source`는 `RULE_BASED`이고 `rule_version`은 `rules-1`입니다. 기본 모델이 있고 파일이 있으면 `inference_state`는 `PENDING`이고 라벨은 null입니다. 학습기가 argmax 라벨을 반환하면 `draft_source`는 `MODEL`입니다. 파일이나 응답이 없으면 규칙 초안으로 닫고 다시 추론하지 않습니다. 일치 키워드와 softmax는 정답 확률이 아니며 `score` 필드는 없습니다. `PENDING`인 사례는 승인, 수정, 보류가 거절됩니다.
@@ -111,7 +115,7 @@ POST /api/v1/trainer/inferences/{id}/complete
 POST /api/v1/trainer/inferences/{id}/fail
 ```
 
-claim은 `FOR UPDATE SKIP LOCKED`로 `QUEUED` 하나만을 `RUNNING`으로 바꿉니다. 대기 실행이 없으면 204입니다. complete는 임베딩 식별자, 라벨 체계, 장치 `cpu` 또는 `cuda`, 시드, 설정, 5×5 혼동행렬을 받습니다. 서버가 행렬로 macro F1을 다시 계산하고, 제출 값과 1e-4보다 크게 다르면 거절합니다. 저장된 점수는 서버가 계산한 값입니다. 모델 파일은 `MAIDOPS_MODEL_DIR` 안의 `mv-`와 숫자 8자리 `.pt`만 읽고, 바이트 SHA-256이 본문과 같아야 합니다.
+claim은 `FOR UPDATE SKIP LOCKED`로 `QUEUED` 하나만을 `RUNNING`으로 바꿉니다. 대기 실행이 없으면 204입니다. complete는 임베딩 식별자, 라벨 체계, 장치 `cpu` 또는 `cuda`, 시드, 설정, 5×5 혼동행렬, `metric_policy`, 라벨 순서, 포함 클래스, 평가 표본 수, 평가 지문, `checkpoint_evaluated`를 받습니다. 서버가 행렬로 `supported-class-macro-f1-v2` macro F1을 다시 계산하고, 제출 값과 1e-4보다 크게 다르면 거절합니다. 평가 지문은 그 실행의 테스트 분할과 같아야 하고, `checkpoint_evaluated`가 참이 아니면 저장하지 않습니다. 이 표시는 학습기가 저장 파일을 다시 로드해 평가했다는 선언입니다. 서버는 PyTorch 파일을 열지 않으므로 그 선언 자체를 가중치로 증명하지는 않습니다. 저장된 점수는 서버가 행렬로 계산한 값입니다. 모델 파일은 `MAIDOPS_MODEL_DIR` 안의 `mv-`와 숫자 8자리 `.pt`만 읽고, symlink는 거부하며, 8MiB를 넘기면 거부하고, 바이트 SHA-256이 본문과 같아야 합니다. `select-default`는 정책이 `supported-class-macro-f1-v2`이고 `checkpoint_evaluated`가 참인 기록만 고릅니다. 조건이 아니면 409이며 기존 기본 모델은 그대로 둡니다.
 
 ## 인증
 

@@ -112,7 +112,9 @@ class LabView(Vertical):
 
 def _model_label(model: ModelSummary) -> str:
     mark = "기본" if model.is_default else "비교"
-    return f"{mark} {model.id} macro F1 {model.macro_f1:.4f}"
+    if model.metric_policy == "supported-class-macro-f1-v2" and model.checkpoint_evaluated:
+        return f"{mark} {model.id} 실제 표본이 있는 클래스 기준 macro F1 {model.macro_f1:.4f}"
+    return f"{mark} {model.id} 정책 미확인 legacy {model.macro_f1:.4f}"
 
 
 def _chosen(status: LabStatus, value: object) -> ModelSummary | None:

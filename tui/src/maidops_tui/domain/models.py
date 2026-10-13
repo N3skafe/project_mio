@@ -184,6 +184,8 @@ class Job:
     finished_at: datetime | None
     cancel_requested_at: datetime | None
     output_truncated: bool = False
+    termination_reason: str | None = None
+    log_storage_incomplete: bool = False
 
     def elapsed_seconds(self, now: datetime) -> float:
         start = self.started_at or self.created_at
@@ -265,6 +267,9 @@ class ClassScore:
     recall: float | None
     f1: float | None
     support: int
+    predicted_count: int = 0
+    false_positives: int = 0
+    included_in_macro: bool = False
 
 
 @dataclass(frozen=True)
@@ -280,6 +285,11 @@ class ModelSummary:
     baseline_per_class: tuple[ClassScore, ...]
     baseline_confusion_matrix: tuple[tuple[int, ...], ...]
     probability_note: str
+    metric_policy: str | None = None
+    included_labels: tuple[str, ...] = ()
+    evaluation_sample_count: int | None = None
+    evaluation_fingerprint: str | None = None
+    checkpoint_evaluated: bool = False
 
 
 @dataclass(frozen=True)

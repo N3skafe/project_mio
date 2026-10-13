@@ -369,6 +369,8 @@ def _job(item: dict[str, Any]) -> Job:
         finished_at=_instant(item.get("finished_at")),
         cancel_requested_at=_instant(item.get("cancel_requested_at")),
         output_truncated=bool(item.get("output_truncated", False)),
+        termination_reason=None if item.get("termination_reason") is None else str(item.get("termination_reason")),
+        log_storage_incomplete=bool(item.get("log_storage_incomplete", False)),
     )
 
 
@@ -442,6 +444,15 @@ def _model(item: dict[str, Any]) -> ModelSummary:
         baseline_per_class=_scores(item.get("baseline_per_class") or []),
         baseline_confusion_matrix=_matrix(item.get("baseline_confusion_matrix") or []),
         probability_note=str(item.get("probability_note") or ""),
+        metric_policy=None if item.get("metric_policy") is None else str(item.get("metric_policy")),
+        included_labels=tuple(str(label) for label in (item.get("included_labels") or [])),
+        evaluation_sample_count=(
+            None if item.get("evaluation_sample_count") is None else int(item["evaluation_sample_count"])
+        ),
+        evaluation_fingerprint=(
+            None if item.get("evaluation_fingerprint") is None else str(item.get("evaluation_fingerprint"))
+        ),
+        checkpoint_evaluated=bool(item.get("checkpoint_evaluated")),
     )
 
 
@@ -453,6 +464,9 @@ def _scores(items: list[dict[str, Any]]) -> tuple[ClassScore, ...]:
             recall=None if item.get("recall") is None else float(item["recall"]),
             f1=None if item.get("f1") is None else float(item["f1"]),
             support=int(item.get("support") or 0),
+            predicted_count=int(item.get("predicted_count") or 0),
+            false_positives=int(item.get("false_positives") or 0),
+            included_in_macro=bool(item.get("included_in_macro")),
         )
         for item in items
     )

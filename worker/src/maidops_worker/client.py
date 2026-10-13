@@ -7,6 +7,14 @@ from typing import Any
 import httpx
 
 
+class BatchRejected(Exception):
+    """같은 배치의 다른 본문이거나, 소유권이 없어 저장하지 않은 경우."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
 class WorkerApi:
     def __init__(self, base_url: str, worker_id: str, *, client: httpx.Client | None = None) -> None:
         self._worker_id = worker_id
@@ -46,6 +54,35 @@ class WorkerApi:
         )
         response.raise_for_status()
 
+    def append_batch(
+        self,
+        job_id: str,
+        batch_id: str,
+        lines: list[tuple[str, str]],
+        timeout: float = 1.0,
+    ) -> None:
+        if not lines:
+            return
+        response = self._client.post(
+            f"/api/v1/worker/jobs/{job_id}/events",
+            headers=self._headers(),
+            json={
+                "batch_id": batch_id,
+                "lines": [{"stream": stream, "text": text} for stream, text in lines],
+            },
+            timeout=timeout,
+        )
+        if response.status_code == 409:
+            code = "STATE"
+            try:
+                body = response.json()
+                if isinstance(body, dict) and body.get("code"):
+                    code = str(body["code"])
+            except Exception:
+                code = "STATE"
+            raise BatchRejected(code)
+        response.raise_for_status()
+
     def finish(
         self,
         job_id: str,
@@ -53,6 +90,9 @@ class WorkerApi:
         exit_code: int | None,
         process_exited: bool,
         timed_out: bool,
+        output_truncated: bool = False,
+        termination_reason: str | None = None,
+        log_storage_incomplete: bool = False,
     ) -> None:
         response = self._client.post(
             f"/api/v1/worker/jobs/{job_id}/finish",
@@ -61,6 +101,9 @@ class WorkerApi:
                 "exit_code": exit_code,
                 "process_exited": process_exited,
                 "timed_out": timed_out,
+                "output_truncated": output_truncated,
+                "termination_reason": termination_reason,
+                "log_storage_incomplete": log_storage_incomplete,
             },
         )
         response.raise_for_status()

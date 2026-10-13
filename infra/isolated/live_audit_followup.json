@@ -1,0 +1,42 @@
+[
+  {
+    "name": "server-trim-slow",
+    "status": "FAIL",
+    "detail": "status=FAILED reason=TIMED_OUT truncated=False db=ERROR:  aggregate functions are not allowed in GROUP BY\nLINE 1: ... || ' ' || log_storage_incomplete::text || ' ' || count(*) F...\n                                                             ^"
+  },
+  {
+    "name": "process-tree-observed",
+    "status": "FAIL",
+    "detail": "status=CANCELLED before=\"/usr/local/bin/python /trusted/sample/tree_check.py \\n/usr/local/bin/python /trusted/sample/tree_check.py child \\n/usr/local/bin/python /trusted/sample/tree_check.py child grandchild \\npython -c import os\\nhits=[]\\nfor pid in os.listdir('/proc'):\\n    if not pid.isdigit():\\n        continue\\n    try:\\n        raw=open(f'/proc/{pid}/cmdline','rb').read().replace(b'\\\\x00', b' ').decode()\\n    except OSError:\\n        continue\\n    if 'tree_check.py' in raw:\\n        hits.append(raw)\\nprint('\\\\n'.join(hits))\" after=\"python -c import os\\nhits=[]\\nfor pid in os.listdir('/proc'):\\n    if not pid.isdigit():\\n        continue\\n    try:\\n        raw=open(f'/proc/{pid}/cmdline','rb').read().replace(b'\\\\x00', b' ').decode()\\n    except OSError:\\n        continue\\n    if 'tree_check.py' in raw:\\n        hits.append(raw)\\nprint('\\\\n'.join(hits))\""
+  },
+  {
+    "name": "training-claim",
+    "status": "PASS",
+    "detail": "{'training_run_id': 'run-00000002', 'reserved_model_id': 'mv-00000002', 'model_file': 'mv-00000002.pt', 'embedding_id': 'hashing-char-ngram-v1', 'label_schema_version': 'labels-1', 'dataset_fingerprint': 'e53dba38b6a17204b5f05b321d5bcc649d985b038e38f1e2c27b67fb74e9b98b', 'seed': 42}"
+  },
+  {
+    "name": "training-lease-expired",
+    "status": "PASS",
+    "detail": "status=FAILED message=학습 프로세스가 응답하지 않습니다. 자동으로 다시 학습하지 않습니다."
+  },
+  {
+    "name": "restart-api",
+    "status": "PASS",
+    "detail": "healthy=True"
+  },
+  {
+    "name": "inference-after-restart",
+    "status": "FAIL",
+    "detail": "{'draft_source': 'MODEL', 'inference_state': 'PENDING', 'model_version_id': 'mv-00000001'}"
+  },
+  {
+    "name": "volume-survives-recreate",
+    "status": "PASS",
+    "detail": "mv-00000001.meta.json\nmv-00000001.pt"
+  },
+  {
+    "name": "inference-after-recreate",
+    "status": "PASS",
+    "detail": "MODEL"
+  }
+]

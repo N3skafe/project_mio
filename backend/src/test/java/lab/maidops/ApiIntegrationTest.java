@@ -407,6 +407,159 @@ class ApiIntegrationTest extends PostgresTestSupport {
     }
 
     @Test
+    void outputLimitExceededIsNotSuccessWhenExitCodeIsZero() throws Exception {
+        String id = JsonPath.read(createJob("idem-limit-00001", "trusted-sample", "sample-pass"), "$.id");
+        assertThat(claimId("worker-limit")).isEqualTo(id);
+        workerJobs.appendOutput("worker-limit", id, List.of(new OutputLine("STDOUT", "partial")));
+        JobResponse finished = workerJobs.finish(
+                "worker-limit",
+                id,
+                new FinishRequest(0, true, false, true, "OUTPUT_LIMIT_EXCEEDED"));
+        assertThat(finished.status()).isEqualTo(JobStatus.FAILED);
+        assertThat(finished.exitCode()).isZero();
+        assertThat(finished.outputTruncated()).isTrue();
+        assertThat(finished.terminationReason()).isEqualTo("OUTPUT_LIMIT_EXCEEDED");
+        String body = events(id);
+        assertThat(body).contains("OUTPUT_LIMIT_EXCEEDED").doesNotContain("RESULT PASS");
+    }
+
+    @Test
+    void retainedLogTrimStaysSuccessful() throws Exception {
+        String id = JsonPath.read(createJob("idem-trim-000001", "trusted-sample", "sample-pass"), "$.id");
+        assertThat(claimId("worker-trim")).isEqualTo(id);
+        workerJobs.appendOutput("worker-trim", id, List.of(new OutputLine("STDOUT", "one"), new OutputLine("STDOUT", "two")));
+        JobResponse finished = workerJobs.finish("worker-trim", id, new FinishRequest(0, true, false));
+        assertThat(finished.status()).isEqualTo(JobStatus.SUCCEEDED);
+        assertThat(finished.terminationReason()).isEqualTo("COMPLETED");
+        assertThat(finished.outputTruncated()).isTrue();
+        String body = events(id);
+        assertThat(body).contains("[출력 잘림]").doesNotContain("OUTPUT_LIMIT_EXCEEDED").contains("RESULT PASS");
+    }
+
+    @Test
+    void supervisionFailureIsNotSuccess() throws Exception {
+        String id = JsonPath.read(createJob("idem-sup-0000001", "trusted-sample", "sample-pass"), "$.id");
+        assertThat(claimId("worker-sup")).isEqualTo(id);
+        JobResponse finished = workerJobs.finish(
+                "worker-sup",
+                id,
+                new FinishRequest(0, true, false, false, "SUPERVISION_FAILED"));
+        assertThat(finished.status()).isEqualTo(JobStatus.FAILED);
+        assertThat(finished.terminationReason()).isEqualTo("SUPERVISION_FAILED");
+        assertThat(events(id)).doesNotContain("RESULT PASS");
+        assertThat(claimId("worker-sup-2")).isNotEqualTo(id);
+    }
+
+    @Test
+    void unconfirmedExitIsNotSuccess() throws Exception {
+        String id = JsonPath.read(createJob("idem-alive-00001", "trusted-sample", "sample-pass"), "$.id");
+        assertThat(claimId("worker-alive")).isEqualTo(id);
+        mockMvc.perform(post("/api/v1/worker/jobs/" + id + "/finish")
+                        .header("X-Worker-Id", "worker-alive")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"exit_code":0,"process_exited":false,"timed_out":false,"termination_reason":"COMPLETED"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RUNNING"))
+                .andExpect(jsonPath("$.termination_reason").value(nullValue()));
+        assertThat(events(id)).doesNotContain("RESULT PASS");
+    }
+
+    @Test
+    void cancelWinsWhenExitCodeIsZero() throws Exception {
+        String id = JsonPath.read(createJob("idem-race-000001", "trusted-sample", "sample-slow"), "$.id");
+        assertThat(claimId("worker-race")).isEqualTo(id);
+        mockMvc.perform(post("/api/v1/jobs/" + id + "/cancel")).andExpect(status().isOk());
+        JobResponse finished = workerJobs.finish(
+                "worker-race",
+                id,
+                new FinishRequest(0, true, false, true, "OUTPUT_LIMIT_EXCEEDED"));
+        assertThat(finished.status()).isEqualTo(JobStatus.CANCELLED);
+        assertThat(finished.terminationReason()).isEqualTo("CANCELLED");
+        assertThat(finished.outputTruncated()).isTrue();
+        assertThat(events(id)).doesNotContain("RESULT PASS");
+    }
+
+    @Test
+    void eventBatchIsStoredOnceAndRejectsADifferentPayload() throws Exception {
+        String id = JsonPath.read(createJob("idem-batch-00001", "trusted-sample", "sample-pass"), "$.id");
+        assertThat(claimId("worker-batch")).isEqualTo(id);
+        String body = """
+                {"batch_id":"job-batch-b1","lines":[{"stream":"STDOUT","text":"alpha"},{"stream":"STDERR","text":"beta"}]}
+                """;
+        mockMvc.perform(post("/api/v1/worker/jobs/" + id + "/events")
+                        .header("X-Worker-Id", "worker-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(post("/api/v1/worker/jobs/" + id + "/events")
+                        .header("X-Worker-Id", "worker-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNoContent());
+        assertThat(countText(id, "alpha")).isEqualTo(1);
+        assertThat(countText(id, "beta")).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from job_event_batches where job_id = ? and batch_id = ?",
+                Integer.class,
+                id,
+                "job-batch-b1")).isEqualTo(1);
+        mockMvc.perform(post("/api/v1/worker/jobs/" + id + "/events")
+                        .header("X-Worker-Id", "worker-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"batch_id":"job-batch-b1","lines":[{"stream":"STDOUT","text":"other"}]}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+        assertThat(countText(id, "other")).isZero();
+        mockMvc.perform(post("/api/v1/worker/jobs/" + id + "/events")
+                        .header("X-Worker-Id", "worker-other")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"batch_id":"job-batch-b2","lines":[{"stream":"STDOUT","text":"stolen"}]}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("STATE"));
+        assertThat(countText(id, "stolen")).isZero();
+        workerJobs.finish("worker-batch", id, new FinishRequest(0, true, false));
+        mockMvc.perform(post("/api/v1/worker/jobs/" + id + "/events")
+                        .header("X-Worker-Id", "worker-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"batch_id":"job-batch-b2","lines":[{"stream":"STDOUT","text":"after-finish"}]}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("STATE"));
+        mockMvc.perform(post("/api/v1/worker/jobs/" + id + "/events")
+                        .header("X-Worker-Id", "worker-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNoContent());
+        assertThat(countText(id, "after-finish")).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from job_event_batches where job_id = ? and batch_id = ?",
+                Integer.class,
+                id,
+                "job-batch-b1")).isEqualTo(1);
+    }
+
+    @Test
+    void incompleteLogStorageDoesNotHideAPassingProcess() throws Exception {
+        String id = JsonPath.read(createJob("idem-incompl-001", "trusted-sample", "sample-pass"), "$.id");
+        assertThat(claimId("worker-incompl")).isEqualTo(id);
+        JobResponse finished = workerJobs.finish(
+                "worker-incompl",
+                id,
+                new FinishRequest(0, true, false, false, "COMPLETED", true));
+        assertThat(finished.status()).isEqualTo(JobStatus.SUCCEEDED);
+        assertThat(finished.terminationReason()).isEqualTo("COMPLETED");
+        assertThat(finished.logStorageIncomplete()).isTrue();
+        assertThat(events(id)).contains("로그 일부를 저장하지 못했습니다").contains("RESULT PASS");
+    }
+
+    @Test
     void heartbeatMakesTheWorkerVisible() throws Exception {
         mockMvc.perform(post("/api/v1/worker/heartbeat").header("X-Worker-Id", "worker-health"))
                 .andExpect(status().isOk());
@@ -450,6 +603,15 @@ class ApiIntegrationTest extends PostgresTestSupport {
                         .content("{\"project_id\":\"" + projectId + "\",\"task_id\":\"" + taskId + "\"}"))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+    }
+
+    private int countText(String jobId, String text) {
+        Integer count = jdbcTemplate.queryForObject(
+                "select count(*) from job_events where job_id = ? and text = ?",
+                Integer.class,
+                jobId,
+                text);
+        return count == null ? 0 : count;
     }
 
     private String events(String jobId) throws Exception {

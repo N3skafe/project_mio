@@ -32,6 +32,8 @@ def status_text(status: JobStatus) -> Text:
 def output_text(line: str) -> Text | str:
     if line in _STATUS_STYLE:
         return Text(line, style=_STATUS_STYLE[line])
+    if line.startswith("RESULT FAIL") or "OUTPUT_LIMIT_EXCEEDED" in line or "SUPERVISION_FAILED" in line:
+        return Text(line, style="bold #f0a0a0")
     if line.startswith("RESULT "):
         word = line.removeprefix("RESULT ")
         return Text(line, style=_STATUS_STYLE.get(word, "bold"))
@@ -126,7 +128,10 @@ class WorkspaceView(Vertical):
         elif self.selected_job_id not in {job.id for job in jobs}:
             self.selected_job_id = jobs[-1].id if jobs else None
         self._jobs = {job.id: job for job in jobs}
-        signature = tuple((job.id, job.status.value, job.output_truncated) for job in jobs)
+        signature = tuple(
+            (job.id, job.status.value, job.output_truncated, job.termination_reason, job.log_storage_incomplete)
+            for job in jobs
+        )
         table = self.query_one("#jobs-table", DataTable)
         now = datetime.now(timezone.utc)
         if signature != self._job_signature:

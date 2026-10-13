@@ -54,6 +54,12 @@ public class JobEntity {
     @Column(name = "cancel_confirmed_at")
     private Instant cancelConfirmedAt;
 
+    @Column(name = "termination_reason", length = 64)
+    private String terminationReason;
+
+    @Column(name = "log_storage_incomplete", nullable = false)
+    private boolean logStorageIncomplete;
+
     public static JobEntity queued(String id, String projectId, String taskId, Instant createdAt) {
         JobEntity job = new JobEntity();
         job.id = id;
@@ -151,5 +157,21 @@ public class JobEntity {
 
     public void setCancelConfirmedAt(Instant cancelConfirmedAt) {
         this.cancelConfirmedAt = cancelConfirmedAt;
+    }
+
+    public String getTerminationReason() {
+        return terminationReason;
+    }
+
+    public void setTerminationReason(String terminationReason) {
+        this.terminationReason = terminationReason;
+    }
+
+    public boolean isLogStorageIncomplete() {
+        return logStorageIncomplete;
+    }
+
+    public void setLogStorageIncomplete(boolean logStorageIncomplete) {
+        this.logStorageIncomplete = logStorageIncomplete;
     }
 }

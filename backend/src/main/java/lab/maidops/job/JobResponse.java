@@ -14,7 +14,9 @@ public record JobResponse(
         Instant finishedAt,
         Instant cancelRequestedAt,
         boolean outputTruncated,
-        Integer exitCode) {
+        Integer exitCode,
+        String terminationReason,
+        boolean logStorageIncomplete) {
     public static JobResponse from(JobEntity job) {
         return new JobResponse(
                 job.getId(),
@@ -26,6 +28,8 @@ public record JobResponse(
                 job.getFinishedAt(),
                 job.getCancelRequestedAt(),
                 job.isOutputTruncated(),
-                job.getExitCode());
+                job.getExitCode(),
+                job.getTerminationReason(),
+                job.isLogStorageIncomplete());
     }
 }

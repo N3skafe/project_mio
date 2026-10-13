@@ -1,0 +1,94 @@
+# 기존 infra/docker-compose.yml 과 분리된 감사·검증용 스택이다.
+# 호스트 포트는 127.0.0.1:55432 와 127.0.0.1:18080 만 연다.
+# 컨테이너 안의 PostgreSQL 5432, 백엔드 8080은 이 네트워크 전용이다.
+# container_name 과 external volume 은 쓰지 않는다.
+# 이 파일만으로 pull, build, up, down 을 실행하지 않는다.
+name: maidops-isolated
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: maidops
+      POSTGRES_PASSWORD: maidops
+      POSTGRES_DB: maidops_isolated
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - isolated-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maidops -d maidops_isolated"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ../../backend
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/maidops_live_audit
+      SPRING_DATASOURCE_USERNAME: maidops
+      SPRING_DATASOURCE_PASSWORD: maidops
+      MAIDOPS_WORKSPACE_ROOT: /trusted
+      MAIDOPS_MODEL_DIR: /models
+    volumes:
+      - ./workspace:/trusted:ro
+      - isolated-models:/models
+    ports:
+      - "127.0.0.1:18080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  worker:
+    build:
+      context: ../../worker
+    environment:
+      MAIDOPS_BACKEND_URL: http://backend:8080
+      MAIDOPS_WORKSPACE_ROOT: /trusted
+      MAIDOPS_WORKER_ID: audit-worker-1
+      MAIDOPS_WORKER_ALIVE_FILE: /tmp/maidops-isolated-worker-alive
+    volumes:
+      - ./workspace:/trusted:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,time; p='/tmp/maidops-isolated-worker-alive'; assert os.path.exists(p) and time.time()-os.path.getmtime(p)<30"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  trainer:
+    build:
+      context: ../../trainer
+    environment:
+      MAIDOPS_BACKEND_URL: http://backend:8080
+      MAIDOPS_MODEL_DIR: /models
+      MAIDOPS_TRAIN_DEVICE: cpu
+      MAIDOPS_TRAINER_ALIVE_FILE: /tmp/maidops-isolated-trainer-alive
+      MAIDOPS_CODE_ROOT: /opt/maidops
+    volumes:
+      - isolated-models:/models
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,time; p='/tmp/maidops-isolated-trainer-alive'; assert os.path.exists(p) and time.time()-os.path.getmtime(p)<30"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+volumes:
+  isolated-postgres:
+  isolated-models:

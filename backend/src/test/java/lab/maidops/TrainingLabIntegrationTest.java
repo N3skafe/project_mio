@@ -15,9 +15,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.jayway.jsonpath.JsonPath;
+import lab.maidops.domain.ErrorLabel;
 import lab.maidops.lab.ClassificationMetrics;
 import lab.maidops.lab.ClassificationMetrics.ClassScore;
 import lab.maidops.lab.ClassificationMetrics.Report;
+import lab.maidops.lab.EvaluationFingerprint;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,14 +41,6 @@ class TrainingLabIntegrationTest extends PostgresTestSupport {
             "india", "juliet", "kilo", "lima", "mike", "november", "oscar", "papa",
             "quebec", "romeo", "sierra", "tango"
     };
-    private static final int[][] MATRIX = {
-            {2, 0, 0, 0, 0},
-            {0, 1, 1, 0, 0},
-            {0, 0, 0, 0, 0},
-            {0, 0, 0, 1, 0},
-            {1, 0, 0, 0, 1}
-    };
-
     @Autowired
     private MockMvc mockMvc;
 
@@ -198,6 +192,78 @@ class TrainingLabIntegrationTest extends PostgresTestSupport {
         assertThat(jdbcTemplate.queryForObject("select count(*) from model_versions", Integer.class)).isZero();
     }
 
+    @Test
+    void reloadFlagIsRequiredBeforeAScoreIsStored() throws Exception {
+        seedConfirmed("p5c");
+        String runId = JsonPath.read(
+                mockMvc.perform(post("/api/v1/training-runs"))
+                        .andExpect(status().isCreated())
+                        .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8),
+                "$.id");
+        String modelId = JsonPath.read(claim("trainer-flag"), "$.reserved_model_id");
+        Files.writeString(MODEL_DIR.resolve(modelId + ".pt"), "not-a-loaded-checkpoint");
+        String body = completeBody(runId).replace("\"checkpoint_evaluated\": true", "\"checkpoint_evaluated\": false");
+        mockMvc.perform(post("/api/v1/trainer/runs/" + runId + "/complete")
+                        .header("X-Trainer-Id", "trainer-flag")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbcTemplate.queryForObject("select count(*) from model_versions", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "select status from training_runs where id = ?",
+                String.class,
+                runId)).isEqualTo("RUNNING");
+    }
+
+    @Test
+    void legacyMetricsCannotReplaceTheCurrentDefault() throws Exception {
+        seedConfirmed("p5d");
+        String created = mockMvc.perform(post("/api/v1/training-runs"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        String runId = JsonPath.read(created, "$.id");
+        String modelId = JsonPath.read(claim("trainer-legacy"), "$.reserved_model_id");
+        Files.writeString(MODEL_DIR.resolve(modelId + ".pt"), "not-a-loaded-checkpoint");
+        complete(modelId, "trainer-legacy", runId);
+        mockMvc.perform(post("/api/v1/model-versions/" + modelId + "/select-default"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.is_default").value(true));
+        jdbcTemplate.update(
+                """
+                insert into training_runs (
+                    id, created_at, status, dataset_fingerprint, label_schema_version, embedding_id, split_policy
+                ) values ('run-legacy01', ?, 'FAILED', ?, 'labels-1', 'hashing-char-ngram-v1', 'split-1')
+                """,
+                Timestamp.from(Instant.parse("2026-10-13T00:00:00Z")),
+                "c".repeat(64));
+        Files.writeString(MODEL_DIR.resolve("mv-00000099.pt"), "legacy-bytes");
+        jdbcTemplate.update(
+                """
+                insert into model_versions (
+                    id, training_run_id, created_at, embedding_id, label_schema_version, dataset_fingerprint,
+                    code_version, device, seed, config_json, metrics_json, model_file, checksum_sha256,
+                    byte_size, is_default
+                ) values (
+                    'mv-00000099', 'run-legacy01', ?, 'hashing-char-ngram-v1', 'labels-1', ?,
+                    'unknown', 'cpu', 42, '{}', '{"macro_f1":1.0,"baseline_macro_f1":0.0}', 'mv-00000099.pt', ?, ?, false
+                )
+                """,
+                Timestamp.from(Instant.parse("2026-10-13T00:00:02Z")),
+                "d".repeat(64),
+                "ab".repeat(32),
+                12);
+        mockMvc.perform(post("/api/v1/model-versions/mv-00000099/select-default"))
+                .andExpect(status().isConflict());
+        assertThat(jdbcTemplate.queryForObject(
+                "select is_default from model_versions where id = ?",
+                Boolean.class,
+                modelId)).isTrue();
+        assertThat(jdbcTemplate.queryForObject(
+                "select is_default from model_versions where id = ?",
+                Boolean.class,
+                "mv-00000099")).isFalse();
+    }
+
     private String claim(String trainerId) throws Exception {
         String body = claimBody(trainerId);
         assertThat(body).contains("hashing-char-ngram-v1").contains("\"seed\":42");
@@ -211,9 +277,32 @@ class TrainingLabIntegrationTest extends PostgresTestSupport {
     }
 
     private String complete(String modelId, String trainerId, String runId) throws Exception {
-        Report report = ClassificationMetrics.fromConfusion(MATRIX);
+        // 서버 계약만 확인한다. 이 파일 바이트는 PyTorch 체크포인트가 아니고 서버도 로드하지 않는다.
+        // checkpoint_evaluated는 학습기 표시다. 이 테스트가 그 표시를 보낸다고 실제 재로드 평가가 된 것은 아니다.
+        String body = completeBody(runId);
+        return mockMvc.perform(post("/api/v1/trainer/runs/" + runId + "/complete")
+                        .header("X-Trainer-Id", trainerId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(modelId))
+                .andExpect(jsonPath("$.is_default").value(false))
+                .andExpect(jsonPath("$.metric_policy").value("supported-class-macro-f1-v2"))
+                .andExpect(jsonPath("$.checkpoint_evaluated").value(true))
+                .andExpect(jsonPath("$.probability_note").value(org.hamcrest.Matchers.containsString("정답 확률")))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+    }
+
+    private String completeBody(String runId) {
+        Report report = ClassificationMetrics.fromConfusion(testMatrix(runId));
         String scores = scores(report);
-        String matrix = matrix();
+        String matrix = matrix(report.confusion());
+        String fingerprint = evaluationFingerprint(runId);
+        String included = report.perClass().stream()
+                .filter(ClassScore::includedInMacro)
+                .map(score -> "\"" + score.label().name() + "\"")
+                .reduce((left, right) -> left + "," + right)
+                .orElse("");
         String body = """
                 {
                   "embedding_id": "hashing-char-ngram-v1",
@@ -235,7 +324,13 @@ class TrainingLabIntegrationTest extends PostgresTestSupport {
                   "confusion_matrix": %s,
                   "baseline_macro_f1": %s,
                   "baseline_per_class": %s,
-                  "baseline_confusion_matrix": %s
+                  "baseline_confusion_matrix": %s,
+                  "metric_policy": "supported-class-macro-f1-v2",
+                  "label_order": ["DB_CONNECTION","AUTH_PERMISSION","EXTERNAL_NETWORK","INPUT_VALIDATION","OTHER"],
+                  "included_labels": [%s],
+                  "evaluation_sample_count": %d,
+                  "evaluation_fingerprint": "%s",
+                  "checkpoint_evaluated": true
                 }
                 """.formatted(
                 Double.toString(report.macroF1()),
@@ -243,16 +338,11 @@ class TrainingLabIntegrationTest extends PostgresTestSupport {
                 matrix,
                 Double.toString(report.macroF1()),
                 scores,
-                matrix);
-        return mockMvc.perform(post("/api/v1/trainer/runs/" + runId + "/complete")
-                        .header("X-Trainer-Id", trainerId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(modelId))
-                .andExpect(jsonPath("$.is_default").value(false))
-                .andExpect(jsonPath("$.probability_note").value(org.hamcrest.Matchers.containsString("정답 확률")))
-                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+                matrix,
+                included,
+                report.perClass().stream().mapToInt(ClassScore::support).sum(),
+                fingerprint);
+        return body;
     }
 
     private static String scores(Report report) {
@@ -272,23 +362,65 @@ class TrainingLabIntegrationTest extends PostgresTestSupport {
                     .append(number(score.f1()))
                     .append(",\"support\":")
                     .append(score.support())
+                    .append(",\"predicted_count\":")
+                    .append(score.predictedCount())
+                    .append(",\"false_positives\":")
+                    .append(score.falsePositives())
+                    .append(",\"included_in_macro\":")
+                    .append(score.includedInMacro())
                     .append('}');
         }
         return builder.append(']').toString();
     }
 
-    private static String matrix() {
+    private int[][] testMatrix(String runId) {
+        int[][] matrix = new int[ErrorLabel.values().length][ErrorLabel.values().length];
+        jdbcTemplate.query(
+                """
+                select label from training_examples
+                where training_run_id = ? and split = 'TEST'
+                order by error_case_id
+                """,
+                rs -> {
+                    int index = ErrorLabel.valueOf(rs.getString("label")).ordinal();
+                    matrix[index][index] += 1;
+                },
+                runId);
+        return matrix;
+    }
+
+    private String evaluationFingerprint(String runId) {
+        List<EvaluationFingerprint.Row> rows = new ArrayList<>();
+        jdbcTemplate.query(
+                """
+                select e.error_case_id, e.label, c.raw_text
+                from training_examples e
+                join error_cases c on c.id = e.error_case_id
+                where e.training_run_id = ? and e.split = 'TEST'
+                order by e.error_case_id
+                """,
+                rs -> {
+                    rows.add(new EvaluationFingerprint.Row(
+                            rs.getString("error_case_id"),
+                            rs.getString("label"),
+                            rs.getString("raw_text")));
+                },
+                runId);
+        return EvaluationFingerprint.of(rows);
+    }
+
+    private static String matrix(int[][] source) {
         StringBuilder builder = new StringBuilder("[");
-        for (int row = 0; row < MATRIX.length; row++) {
+        for (int row = 0; row < source.length; row++) {
             if (row > 0) {
                 builder.append(',');
             }
             builder.append('[');
-            for (int column = 0; column < MATRIX[row].length; column++) {
+            for (int column = 0; column < source[row].length; column++) {
                 if (column > 0) {
                     builder.append(',');
                 }
-                builder.append(MATRIX[row][column]);
+                builder.append(source[row][column]);
             }
             builder.append(']');
         }

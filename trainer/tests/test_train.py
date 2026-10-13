@@ -59,7 +59,10 @@ def test_cpu_training_beats_the_rule_baseline_on_a_fixed_split(tmp_path: Path) -
     assert result.macro_f1 > result.baseline_macro_f1
     assert sum(sum(row) for row in result.confusion) == 4
     checkpoint = load_checkpoint(destination)
-    assert checkpoint["format"] == "maidops-mlp-v1"
+    assert checkpoint["format"] == "maidops-mlp-v2"
+    assert result.checkpoint_evaluated is True
+    assert result.metric_policy == "supported-class-macro-f1-v2"
+    assert from_confusion(result.confusion).macro_f1 == pytest.approx(result.macro_f1)
     assert "softmax" not in str(result.per_class)
     label = predict_label(destination, ("dbmarker " * 30) + "jdbc postgresql", result.checksum_sha256)
     assert label == "DB_CONNECTION"
