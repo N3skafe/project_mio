@@ -25,6 +25,7 @@ public record ErrorCaseResponse(
         @JsonInclude(JsonInclude.Include.ALWAYS) ErrorLabel confirmedLabel,
         InferenceState inferenceState,
         @JsonInclude(JsonInclude.Include.ALWAYS) String modelVersionId,
+        @JsonInclude(JsonInclude.Include.ALWAYS) String sourceHint,
         Instant createdAt,
         List<RevisionResponse> revisions) {
     public static ErrorCaseResponse from(ErrorCaseEntity entity) {
@@ -45,6 +46,7 @@ public record ErrorCaseResponse(
                 confirmed ? entity.getCurrentLabel() : null,
                 entity.getInferenceState(),
                 entity.getModelVersionId(),
+                entity.getSourceHint(),
                 entity.getCreatedAt(),
                 entity.getRevisions().stream().map(RevisionResponse::from).toList());
     }

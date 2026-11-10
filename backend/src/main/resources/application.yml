@@ -14,7 +14,7 @@ spring:
     hibernate:
       ddl-auto: validate
     properties:
-      hibernate.jdbc.time_zone: UTC
+      "[hibernate.jdbc.time_zone]": UTC
   flyway:
     enabled: true
   jackson:
@@ -45,4 +45,4 @@ maidops:
 
 logging:
   level:
-    org.hibernate.SQL: warn
+    "[org.hibernate.SQL]": warn

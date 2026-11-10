@@ -60,7 +60,7 @@ PHASE 1 테스트는 `tui/tests`에 있다. `cd tui` 후 `.venv`의 pytest로 �
 - 성공으로 바꾸는 HTTP 경로는 404입니다.
 - 목록 페이지에 중복이 없습니다.
 - 초안 해결 기록 저장은 거부되고, 수정 뒤에만 SESSION 해결 기록이 검색됩니다.
-- `/api/v1/health`는 database UP, worker NOT_CONNECTED입니다.
+- `/api/v1/health`는 heartbeat가 없으면 database UP, worker NOT_CONNECTED, trainer NOT_CONNECTED입니다. heartbeat 뒤에는 해당 필드만 CONNECTED입니다.
 
 TUI의 LIVE 테스트는 닫힌 포트와 MockTransport로 연결 실패와 QUEUED 유지 를 확인합니다. DEMO 테스트는 이전과 같이 통과해야 합니다.
 
@@ -87,4 +87,4 @@ TUI의 LIVE 테스트는 닫힌 포트와 MockTransport로 연결 실패와 QUEU
 - 캐릭터는 학습 `RUNNING`일 때 TRAINING이고, 기본이 아닌 최신 모델이 있을 때 REPORTING입니다. 라벨 승인만으로는 TRAINING이 아닙니다.
 - 기본 모델이 없으면 실패 초안은 `RULE_BASED`입니다. 기본 모델과 파일이 있으면 라벨은 비어 있고 승인할 수 없습니다. 학습기가 라벨을 반환하면 `MODEL`이고 확정 라벨은 여전히 없습니다. 임대가 끊기면 `RULE_BASED`로 닫고 다시 claim되지 않습니다.
 
-임베딩 의미 검색, 근거 있는 답변 생성, 새 로그에 대한 모델 추론, CUDA 위에서의 실제 학습, Docker Compose 기동은 이 환경에서 실행하지 않습니다. Linux 실행도 확인하지 않습니다.
+로컬 해시 유사 검색과 기록 인용 답변, 기본 모델이 있을 때의 `MODEL`/`PENDING` 초안은 구현되어 있다. CUDA 위에서의 실제 학습은 이 환경에서 실행하지 않습니다. Linux용 LIVE 셸 스크립트도 실행하지 않았습니다. 2026-11-10에 `docker compose config`는 통과했고, 데몬이 없어 `up`은 실행하지 않았습니다.

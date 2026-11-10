@@ -74,11 +74,13 @@ class ApiIntegrationTest extends PostgresTestSupport {
     @Test
     void healthReportsDatabaseUpAndWorkerDisconnected() throws Exception {
         jdbcTemplate.update("delete from worker_sessions");
+        jdbcTemplate.update("delete from trainer_sessions");
         mockMvc.perform(get("/api/v1/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
                 .andExpect(jsonPath("$.database").value("UP"))
                 .andExpect(jsonPath("$.worker").value("NOT_CONNECTED"))
+                .andExpect(jsonPath("$.trainer").value("NOT_CONNECTED"))
                 .andExpect(jsonPath("$.authentication").value("NONE"));
     }
 
@@ -566,6 +568,19 @@ class ApiIntegrationTest extends PostgresTestSupport {
         mockMvc.perform(get("/api/v1/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.worker").value("CONNECTED"));
+    }
+
+    @Test
+    void heartbeatMakesTheTrainerVisible() throws Exception {
+        jdbcTemplate.update("delete from trainer_sessions");
+        mockMvc.perform(get("/api/v1/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.trainer").value("NOT_CONNECTED"));
+        mockMvc.perform(post("/api/v1/trainer/heartbeat").header("X-Trainer-Id", "trainer-health"))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.trainer").value("CONNECTED"));
     }
 
     private String confirmedBody() throws Exception {

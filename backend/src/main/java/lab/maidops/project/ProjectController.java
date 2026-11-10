@@ -4,9 +4,13 @@ import java.util.List;
 
 import lab.maidops.api.ApiException;
 import lab.maidops.api.PageResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -14,10 +18,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProjectController {
     private final ProjectRepository projects;
     private final RegisteredTaskRepository tasks;
+    private final ProjectRegistrationService registration;
 
-    public ProjectController(ProjectRepository projects, RegisteredTaskRepository tasks) {
+    public ProjectController(
+            ProjectRepository projects,
+            RegisteredTaskRepository tasks,
+            ProjectRegistrationService registration) {
         this.projects = projects;
         this.tasks = tasks;
+        this.registration = registration;
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public ProjectResponse create(@RequestBody CreateProjectRequest request) {
+        return registration.createProject(request);
     }
 
     @GetMapping
@@ -43,5 +58,11 @@ public class ProjectController {
         }
         List<TaskResponse> items = tasks.findByProjectIdOrderByIdAsc(id).stream().map(TaskResponse::from).toList();
         return new TaskListResponse(items);
+    }
+
+    @PostMapping("/{id}/tasks")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TaskResponse createTask(@PathVariable String id, @RequestBody CreateTaskRequest request) {
+        return registration.createTask(id, request);
     }
 }

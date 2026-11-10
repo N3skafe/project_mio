@@ -13,6 +13,16 @@ from maidops_worker.runner import run_registered_process
 ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "trusted-projects"
 
 
+def test_registered_script_stays_inside_the_workspace() -> None:
+    command = resolve_command(ROOT, "sample", ["{python}", "pass_check.py"])
+    script = Path(command.argv[1])
+    assert command.working_directory.is_relative_to(ROOT)
+    assert script.is_file()
+    assert script.is_relative_to(ROOT)
+    with pytest.raises(CommandRejected):
+        resolve_command(ROOT, "sample/../../outside", ["{python}", "pass_check.py"])
+
+
 def test_rejects_shell_and_paths_outside_the_root() -> None:
     with pytest.raises(CommandRejected):
         resolve_command(ROOT, "sample", ["cmd.exe", "/c", "pass_check.py"])

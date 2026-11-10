@@ -1,14 +1,14 @@
 # 데이터 모델
 
-DEMO는 메모리 모델을 쓰고, LIVE는 같은 이름의 PostgreSQL 테이블을 씁니다. 마이그레이션은 `V1__init.sql`, `V2__worker_queue.sql`, `V3__rule_draft.sql`, `V4__training.sql`입니다.
+DEMO는 메모리 모델을 쓰고, LIVE는 같은 이름의 PostgreSQL 테이블을 씁니다. 마이그레이션은 `V1__init.sql`부터 `V9__user_intake.sql`까지입니다.
 
 | 이름 | PHASE 1 | 이후 |
 | --- | --- | --- |
-| Project | DEMO fixture. LIVE는 Flyway 시드 | 등록 프로젝트 |
-| RegisteredTask | DEMO fixture. LIVE는 `plan_text`와, 신뢰 샘플은 `argv_json` | 워커는 argv가 있는 작업만 claim. `lab-*`는 문장이 다른 실패 50개 |
+| Project | DEMO fixture. LIVE는 Flyway 시드와 사용자 등록 | `default_task_id`는 첫 작업 전에 null |
+| RegisteredTask | DEMO fixture. LIVE는 `plan_text`와 `argv_json` | 워커는 argv가 있는 작업만 claim. 등록 시 workspace 안 파일만 허용 |
 | Job | DEMO는 메모리. LIVE는 `jobs` 테이블. 생성 상태는 QUEUED | 워커가 상태를 진행 |
 | OutputLine | DEMO 메모리. LIVE는 `job_events.sequence_no` | 로그 청크 |
-| ErrorCase | 실패 로그에서 생성. 예측 초안과 확정 라벨을 분리 | `rule_version`, `matched_keyword` |
+| ErrorCase | 작업 실패 또는 가져온 로그. 예측 초안과 확정 라벨을 분리 | `job_id`는 가져온 로그에서 null. `source_hint` |
 | LabelRevision | 사례 안의 목록. LIVE는 `label_revisions` | 변경 이력 |
 | ResolutionRecord | DEMO fixture와 세션. LIVE는 `resolution_records` | 검색 대상 |
 | TrainingRun | `training_runs`. 상태, fingerprint, 설정, 평가, 임대 | 조건 미달이면 행을 만들지 않음 |
@@ -30,7 +30,7 @@ OTHER
 
 `confirmed_label`은 응답에서만 계산한다. `review_status`가 `APPROVED` 또는 `REVISED`일 때 `current_label`과 같고, `DRAFT`와 `DEFERRED`에서는 null이다. 예측 초안은 검토 후에도 `draft_label`에 남는다.
 
-시드 해결 기록의 `origin`은 `FIXTURE`다. `MODEL`은 enum에만 있고 값을 만들지 않는다.
+`origin`은 `FIXTURE`(가상 해결 기록), `SESSION`(작업 실패와 사용자가 저장한 해결 기록), `IMPORT`(실행 없이 가져온 실패 로그)다. 화면은 이 셋을 구분해서 보여 준다.
 
 우선순위는 `401`/`403`, `AUTH_PERMISSION`, `DB_CONNECTION`, `INPUT_VALIDATION`, `EXTERNAL_NETWORK`, 그다음 `OTHER`다. Java `FailureRuleClassifier`와 TUI `rules.py`가 같은 목록을 쓴다.
 
@@ -63,6 +63,8 @@ DRAFT -> DEFERRED
 조건은 확정 20건 이상, 서로 다른 라벨 2종 이상, 학습 8건·검증 4건·테스트 4건 이상, 각 분할의 라벨 2종 이상이다. 하나라도 부족하면 `POST /api/v1/training-runs`는 409이고 행과 점수를 만들지 않는다.
 
 `split-1`은 로그를 소문자로 바꾸고 UUID, 경로, 긴 16진수, 숫자를 자리표시자로 바꾼 뒤 SHA-256 템플릿으로 묶는다. 같은 `job_id`이거나 같은 템플릿이면 한 그룹이다. 그룹 키는 템플릿 해시 목록의 SHA-256이다. 앵커가 없으면 그룹의 첫 라벨 이름으로 나눈 뒤 그룹 키 순서로 5칸 중 0은 TEST, 1은 VAL, 나머지는 TRAIN이다. 앵커가 있으면 그 템플릿의 분할을 따르고, TEST가 VAL과 TRAIN보다 우선한다. 처음 보는 그룹은 TRAIN이다. 앵커는 학습 실행을 만든 트랜잭션에서 저장된다. 이미 TEST인 템플릿은 이후 TRAIN으로 옮기지 않는다.
+
+유사 검색은 벡터를 테이블에 저장하지 않습니다. 요청마다 `hashing-char-ngram-v1`으로 확정 사례와 해결 기록의 코사인을 계산합니다. 0.35 미만은 반환하지 않습니다. 이 값은 정답 확률이 아닙니다.
 
 문장 벡터 식별자는 `hashing-char-ngram-v1`이다. 문자 3–5그램을 256차원에 해시하고 L2 정규화한다. 파라미터를 학습하지 않고 파일을 받지 않는다. MLP는 256에서 64, ReLU, dropout 0, 5클래스다. 새 학습 파일 형식은 `maidops-mlp-v2`이고, 이전 추론용 파일은 `maidops-mlp-v1`이다. 파일 이름은 `mv-00000001.pt` 형태다. 서버는 바이트 체크섬과 크기, symlink 여부만 보고 PyTorch로 열지 않는다. 가중치 검증과 재로드 평가는 Python 학습기가 한다.
 

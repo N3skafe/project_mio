@@ -11,7 +11,9 @@ from textual.widgets import Button, DataTable, RichLog, Static
 from textual.widgets.data_table import CellDoesNotExist
 
 from maidops_tui.domain.display import display_status, format_elapsed, format_job_meta
+from maidops_tui.domain.errors import LabError, format_lab_error
 from maidops_tui.domain.models import ACTIVE_JOB_STATUSES, Job, JobStatus, OutputLine, Project, RegisteredTask, RunPlan
+from maidops_tui.screens.intake import ImportLogScreen, ProjectIntakeScreen, TaskIntakeScreen
 from maidops_tui.widgets.host import ops_app
 
 _STATUS_STYLE = {
@@ -55,16 +57,24 @@ class WorkspaceView(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static("Workspace", classes="view-title", markup=False)
+        yield Static("", id="live-checklist", markup=False)
         yield Static("", id="run-plan", markup=False)
         yield DataTable(id="task-table", cursor_type="row", show_row_labels=False, zebra_stripes=True)
         yield DataTable(id="project-table", cursor_type="row", show_row_labels=False, zebra_stripes=True)
         yield DataTable(id="jobs-table", cursor_type="row", show_row_labels=False, zebra_stripes=True)
+        yield Static("", id="intake-notice", markup=False)
         with Horizontal(id="workspace-actions"):
             yield Button("테스트 실행", id="run-test-button", compact=True)
             yield Button("취소", id="cancel-job-button", compact=True)
             yield Button("실패 사례", id="open-failure-button", compact=True)
+            yield Button("프로젝트 등록", id="add-project-button", compact=True, disabled=True)
+            yield Button("작업 등록", id="add-task-button", compact=True, disabled=True)
+            yield Button("로그 가져오기", id="import-log-button", compact=True, disabled=True)
         yield Static("작업을 선택하면 출력과 경과 시간이 표시됩니다.", id="job-meta", markup=False)
         yield RichLog(id="job-log", wrap=True, markup=False, highlight=False, auto_scroll=True)
+
+    def set_live_checklist(self, text: str) -> None:
+        self.query_one("#live-checklist", Static).update(text)
 
     def on_mount(self) -> None:
         tasks = self.query_one("#task-table", DataTable)
@@ -79,6 +89,12 @@ class WorkspaceView(Vertical):
         jobs.add_column("작업", key="job")
         jobs.add_column("상태", key="status")
         jobs.add_column("경과", key="elapsed")
+
+    def set_intake_available(self, available: bool) -> None:
+        for button_id in ("add-project-button", "add-task-button", "import-log-button"):
+            self.query_one(f"#{button_id}", Button).disabled = not available
+        notice = "프로젝트 등록, 작업 등록, 실패 로그 가져오기는 LIVE에서만 사용합니다." if not available else ""
+        self.query_one("#intake-notice", Static).update(notice)
 
     def apply_projects(self, projects: list[Project], selected: Project | None) -> None:
         signature = tuple((project.id, selected is not None and project.id == selected.id) for project in projects)
@@ -187,10 +203,20 @@ class WorkspaceView(Vertical):
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id
-        if button_id not in {"run-test-button", "cancel-job-button", "open-failure-button"}:
+        if button_id not in {
+            "run-test-button",
+            "cancel-job-button",
+            "open-failure-button",
+            "add-project-button",
+            "add-task-button",
+            "import-log-button",
+        }:
             return
         event.stop()
         app = ops_app(self)
+        if button_id in {"add-project-button", "add-task-button", "import-log-button"}:
+            await self._intake(button_id)
+            return
         if button_id == "run-test-button":
             await app.command_from_ui("/test")
             return
@@ -206,6 +232,61 @@ class WorkspaceView(Vertical):
             app.write_activity("오류: 실패한 작업을 선택해야 오류 사례로 이동할 수 있습니다.")
             return
         app.pending_review_job_id = job.id
+        await app.command_from_ui("/review")
+
+    async def _intake(self, button_id: str) -> None:
+        app = ops_app(self)
+        if button_id == "add-project-button":
+            form = await app.push_screen_wait(ProjectIntakeScreen())
+            if form is None:
+                return
+            try:
+                project = await app.service.register_project(form["id"], form["name"], form["summary"])
+            except LabError as exc:
+                for line in format_lab_error(exc):
+                    app.write_activity(line)
+                return
+            app.write_activity(f"프로젝트를 등록했습니다: {project.id} {project.name}")
+            await app.refresh_ui()
+            return
+        if button_id == "add-task-button":
+            selected = await app.service.get_selected_project()
+            if selected is None:
+                app.write_activity("오류: 작업을 등록할 프로젝트를 먼저 선택하세요.")
+                return
+            form = await app.push_screen_wait(TaskIntakeScreen())
+            if form is None:
+                return
+            try:
+                task = await app.service.register_task(
+                    selected.id,
+                    form["id"],
+                    form["name"],
+                    form["plan_text"],
+                    form["relative_workdir"],
+                    form["script"],
+                    int(form["timeout_seconds"]),
+                )
+            except LabError as exc:
+                for line in format_lab_error(exc):
+                    app.write_activity(line)
+                return
+            app.write_activity(f"작업을 등록했습니다: {task.id}. 학습은 시작하지 않습니다.")
+            await app.refresh_ui()
+            return
+        selected = await app.service.get_selected_project()
+        form = await app.push_screen_wait(ImportLogScreen(selected.id if selected is not None else ""))
+        if form is None:
+            return
+        try:
+            case = await app.service.import_failure_log(form["project_id"], form["raw_log"], form["source_hint"])
+        except LabError as exc:
+            for line in format_lab_error(exc):
+                app.write_activity(line)
+            return
+        label = "대기" if case.draft_label is None else case.draft_label.value
+        app.write_activity(f"실패 로그를 가져왔습니다: {case.id} {case.origin.value} {label}. 작업을 만들지 않았습니다.")
+        app.pending_review_job_id = None
         await app.command_from_ui("/review")
 
     async def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:

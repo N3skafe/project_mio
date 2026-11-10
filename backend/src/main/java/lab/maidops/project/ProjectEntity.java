@@ -18,7 +18,7 @@ public class ProjectEntity {
     @Column(nullable = false, length = 500)
     private String summary;
 
-    @Column(name = "default_task_id", nullable = false, length = 64)
+    @Column(name = "default_task_id", length = 64)
     private String defaultTaskId;
 
     public String getId() {
@@ -35,5 +35,21 @@ public class ProjectEntity {
 
     public String getDefaultTaskId() {
         return defaultTaskId;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setSummary(String summary) {
+        this.summary = summary;
+    }
+
+    public void setDefaultTaskId(String defaultTaskId) {
+        this.defaultTaskId = defaultTaskId;
     }
 }

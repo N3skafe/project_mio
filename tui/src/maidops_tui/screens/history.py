@@ -6,7 +6,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Input, RichLog, Static
 
-from maidops_tui.domain.display import display_status
+from maidops_tui.domain.display import display_status, origin_caption
 from maidops_tui.domain.models import ErrorCase, Job, ResolutionRecord, SearchHit
 from maidops_tui.widgets.host import ops_app
 
@@ -19,7 +19,10 @@ class HistoryView(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static("History", classes="view-title", markup=False)
-        yield Static("작업, 오류 사례, 해결 기록을 키워드로 찾습니다. 의미 검색은 후속 단계입니다.", markup=False)
+        yield Static(
+            "키워드 검색은 이 화면입니다. 확정 기록의 해시 유사 검색은 Review의 유사 사례입니다.",
+            markup=False,
+        )
         with Horizontal(id="history-search-row"):
             yield Input(placeholder="검색어  예: 5432, 403, email", id="history-query")
             yield Button("검색", id="history-search-button", compact=True)
@@ -80,9 +83,11 @@ def _render(
     if cases:
         for case in cases:
             confirmed = "없음" if case.confirmed_label is None else case.confirmed_label.value
+            draft = "대기" if case.draft_label is None else case.draft_label.value
+            job = case.job_id or "없음"
             lines.append(
-                f"[SESSION] {case.id} 예측 {case.draft_label.value} {case.draft_source.value} "
-                f"확정 {confirmed} {case.review_status.value} job={case.job_id}"
+                f"[{origin_caption(case.origin)}] {case.id} 예측 {draft} {case.draft_source.value} "
+                f"확정 {confirmed} {case.review_status.value} job={job}"
             )
     else:
         lines.append("이번 세션 오류 사례가 없습니다.")

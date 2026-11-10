@@ -15,6 +15,10 @@ class TrainerApi:
     def close(self) -> None:
         self._client.close()
 
+    def presence(self) -> None:
+        response = self._client.post("/api/v1/trainer/heartbeat", headers=self._headers())
+        response.raise_for_status()
+
     def claim(self) -> dict[str, Any] | None:
         response = self._client.post("/api/v1/trainer/claim", headers=self._headers())
         response.raise_for_status()

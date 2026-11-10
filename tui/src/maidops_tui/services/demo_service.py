@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from maidops_tui.domain.display import format_connection
 from maidops_tui.domain.errors import NotFoundError, StateError
 from maidops_tui.domain.rules import classify_failure
+from maidops_tui.domain.similarity import IndexedRecord, advise
 from maidops_tui.domain.models import (
     CANCELLABLE_JOB_STATUSES,
     ConnectionStatus,
@@ -31,9 +32,10 @@ from maidops_tui.domain.models import (
     ResolutionRecord,
     ReviewDecision,
     ReviewStatus,
+    SearchKind,
+    SimilarAdvice,
     RunPlan,
     SearchHit,
-    SearchKind,
     ServiceEvent,
     VirtualOutcome,
 )
@@ -79,6 +81,9 @@ class DemoService:
         return format_connection(ConnectionStatus.DEMO)
 
     def worker_connected(self) -> bool:
+        return False
+
+    def trainer_connected(self) -> bool:
         return False
 
     def add_listener(self, listener: _LISTENER) -> None:
@@ -128,6 +133,41 @@ class DemoService:
         self._selected_task_id = task.id
         self._emit(ServiceEvent("project_changed", task.id))
         return task
+
+    async def register_project(self, project_id: str, name: str, summary: str) -> Project:
+        del project_id, name, summary
+        raise StateError(
+            "프로젝트 등록은 LIVE에서만 사용할 수 있습니다.",
+            "/project add my-api 내 API",
+        )
+
+    async def register_task(
+        self,
+        project_id: str,
+        task_id: str,
+        name: str,
+        plan_text: str,
+        relative_workdir: str,
+        script: str,
+        timeout_seconds: int,
+    ) -> RegisteredTask:
+        del project_id, task_id, name, plan_text, relative_workdir, script, timeout_seconds
+        raise StateError(
+            "작업 등록은 LIVE에서만 사용할 수 있습니다.",
+            "/task add my-check sample pass_check.py 10 통과 점검",
+        )
+
+    async def import_failure_log(
+        self,
+        project_id: str,
+        raw_log: str,
+        source_hint: str | None = None,
+    ) -> ErrorCase:
+        del project_id, raw_log, source_hint
+        raise StateError(
+            "실패 로그 가져오기는 LIVE에서만 사용할 수 있습니다.",
+            "/import-log trusted-sample Connection to localhost:5432 refused",
+        )
 
     async def get_run_plan(self) -> RunPlan:
         project = await self.get_selected_project()
@@ -348,6 +388,77 @@ class DemoService:
                         )
                     )
         return hits
+
+    async def similar_search(
+        self,
+        *,
+        raw_log: str | None = None,
+        error_case_id: str | None = None,
+    ) -> SimilarAdvice:
+        has_log = bool(raw_log and raw_log.strip())
+        has_case = bool(error_case_id and error_case_id.strip())
+        if has_log == has_case:
+            raise StateError(
+                "raw_log 또는 error_case_id 중 하나만 보내세요.",
+                "/similar Connection to localhost:5432 refused",
+            )
+        async with self._lock:
+            if has_case:
+                query = self._require_case(error_case_id or "").raw_text
+            else:
+                query = (raw_log or "").strip()
+            if len(query) > 8000:
+                raise StateError("비교할 로그는 8000자 이하여야 합니다.", "")
+            records: list[IndexedRecord] = []
+            confirmed = {
+                case.id: case
+                for case in self._cases.values()
+                if case.review_status in {ReviewStatus.APPROVED, ReviewStatus.REVISED}
+                and case.current_label is not None
+            }
+            covered: set[str] = set()
+            for record in self._resolutions:
+                if has_case and record.error_case_id == error_case_id:
+                    continue
+                parent = confirmed.get(record.error_case_id)
+                if record.origin is not DataOrigin.FIXTURE and parent is None:
+                    continue
+                document = f"{record.cause}\n{record.method}"
+                if parent is not None:
+                    document = f"{parent.raw_text}\n{document}"
+                    covered.add(parent.id)
+                records.append(
+                    IndexedRecord(
+                        kind=SearchKind.RESOLUTION,
+                        origin=record.origin,
+                        hit_id=record.id,
+                        error_case_id=record.error_case_id,
+                        label=record.label.value,
+                        document=document,
+                        excerpt=record.cause,
+                        cause=record.cause,
+                        method=record.method,
+                    )
+                )
+            for case in confirmed.values():
+                if has_case and case.id == error_case_id:
+                    continue
+                if case.id in covered or case.current_label is None:
+                    continue
+                records.append(
+                    IndexedRecord(
+                        kind=SearchKind.ERROR_CASE,
+                        origin=case.origin,
+                        hit_id=case.id,
+                        error_case_id=case.id,
+                        label=case.current_label.value,
+                        document=case.raw_text,
+                        excerpt=case.raw_text,
+                        cause=None,
+                        method=None,
+                    )
+                )
+        return advise(query, records)
 
     async def lab_status(self) -> LabStatus:
         async with self._lock:

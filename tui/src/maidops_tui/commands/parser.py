@@ -21,6 +21,11 @@ class CommandName(StrEnum):
     HISTORY = "history"
     QUIET_ON = "quiet_on"
     QUIET_OFF = "quiet_off"
+    PROJECT_ADD = "project_add"
+    TASK_ADD = "task_add"
+    IMPORT_LOG = "import_log"
+    SIMILAR = "similar"
+    ADVISE = "advise"
 
 
 @dataclass(frozen=True)
@@ -29,6 +34,7 @@ class ParsedCommand:
     argument: str | None = None
     screen: ScreenId | None = None
     quiet: bool | None = None
+    extra: tuple[str, ...] = ()
 
 
 def parse_command(raw: str) -> ParsedCommand:
@@ -76,6 +82,21 @@ def parse_command(raw: str) -> ParsedCommand:
         )
     if head == "/project":
         return _parse_project(args)
+    if head == "/task":
+        return _parse_task(args)
+    if head == "/import-log":
+        return _parse_import(args)
+    if head == "/similar":
+        if not args:
+            raise CommandSyntaxError(
+                "비교할 실패 로그가 필요합니다.",
+                "/similar Connection to localhost:5432 refused",
+            )
+        return ParsedCommand(CommandName.SIMILAR, extra=tuple(args), screen=ScreenId.REVIEW)
+    if head == "/advise":
+        if len(args) != 1:
+            raise CommandSyntaxError("오류 사례 id가 필요합니다.", "/advise case-0001")
+        return ParsedCommand(CommandName.ADVISE, argument=args[0], screen=ScreenId.REVIEW)
     raise CommandSyntaxError(f"지원하지 않는 명령입니다: {head}", "/help")
 
 
@@ -95,9 +116,51 @@ def _parse_project(args: list[str]) -> ParsedCommand:
             argument=rest[0],
             screen=ScreenId.WORKSPACE,
         )
+    if sub == "add":
+        if len(rest) < 2:
+            raise CommandSyntaxError("프로젝트 id와 이름이 필요합니다.", "/project add my-api 내 API")
+        return ParsedCommand(
+            CommandName.PROJECT_ADD,
+            argument=rest[0],
+            extra=tuple(rest[1:]),
+            screen=ScreenId.WORKSPACE,
+        )
     raise CommandSyntaxError(
         f"지원하지 않는 프로젝트 명령입니다: {sub}",
         "/project list",
+    )
+
+
+def _parse_task(args: list[str]) -> ParsedCommand:
+    if not args or args[0].lower() != "add":
+        raise CommandSyntaxError("작업 하위 명령은 add입니다.", "/task add my-check sample pass_check.py 10 통과 점검")
+    rest = args[1:]
+    if len(rest) < 5:
+        raise CommandSyntaxError(
+            "작업 id, 상대 경로, 스크립트, 제한 시간, 이름이 필요합니다.",
+            "/task add my-check sample pass_check.py 10 통과 점검",
+        )
+    if not rest[3].isdigit() or not 1 <= int(rest[3]) <= 120:
+        raise CommandSyntaxError("timeout_seconds는 1 이상 120 이하여야 합니다.", "10")
+    return ParsedCommand(
+        CommandName.TASK_ADD,
+        argument=rest[0],
+        extra=tuple(rest[1:]),
+        screen=ScreenId.WORKSPACE,
+    )
+
+
+def _parse_import(args: list[str]) -> ParsedCommand:
+    if len(args) < 2:
+        raise CommandSyntaxError(
+            "프로젝트 id와 실패 로그가 필요합니다. 여러 줄은 Workspace의 가져오기 폼을 사용하세요.",
+            "/import-log trusted-sample Connection to localhost:5432 refused",
+        )
+    return ParsedCommand(
+        CommandName.IMPORT_LOG,
+        argument=args[0],
+        extra=tuple(args[1:]),
+        screen=ScreenId.REVIEW,
     )
 
 

@@ -26,7 +26,7 @@ public class ErrorCaseEntity {
     @Column(length = 64)
     private String id;
 
-    @Column(name = "job_id", nullable = false, length = 64)
+    @Column(name = "job_id", length = 64)
     private String jobId;
 
     @Column(name = "project_id", nullable = false, length = 64)
@@ -70,6 +70,9 @@ public class ErrorCaseEntity {
 
     @Column(name = "model_version_id", length = 64)
     private String modelVersionId;
+
+    @Column(name = "source_hint", length = 200)
+    private String sourceHint;
 
     @OneToMany(mappedBy = "errorCase", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("createdAt asc, id asc")
@@ -185,6 +188,14 @@ public class ErrorCaseEntity {
 
     public void setModelVersionId(String modelVersionId) {
         this.modelVersionId = modelVersionId;
+    }
+
+    public String getSourceHint() {
+        return sourceHint;
+    }
+
+    public void setSourceHint(String sourceHint) {
+        this.sourceHint = sourceHint;
     }
 
     public List<LabelRevisionEntity> getRevisions() {

@@ -55,13 +55,38 @@ TUI LIVE
   -> PostgreSQL
 ```
 
-연결 실패, 시간 초과, 데이터베이스 DOWN은 `DISCONNECTED`와 한국어 오류로 남고 작업을 만들지 않습니다. health가 UP이어도 `worker`는 `NOT_CONNECTED`입니다. `POST /api/v1/jobs`는 `QUEUED`만 만들고 `started_at`을 비웁니다. 성공으로 끝내는 HTTP API는 없습니다.
+연결 실패, 시간 초과, 데이터베이스 DOWN은 `DISCONNECTED`와 한국어 오류로 남고 작업을 만들지 않습니다. health의 `database=UP`은 워커 연결과 별개입니다. 워커 프로세스가 없으면 `worker=NOT_CONNECTED`이고, 학습기 프로세스가 없으면 `trainer=NOT_CONNECTED`입니다. `POST /api/v1/jobs`는 `QUEUED`만 만들고 `started_at`을 비웁니다. 성공으로 끝내는 HTTP API는 없습니다.
 
 같은 `Idempotency-Key`와 같은 본문은 같은 작업을 반환합니다. 같은 키와 다른 본문은 409입니다. 종료된 작업은 취소할 수 없습니다. `applyTerminalResultIfRunning`은 RUNNING일 때만 종료 상태를 쓰고, HTTP에 연결되어 있지 않습니다. QUEUED나 CANCELLED에는 늦은 성공을 덮어쓰지 않습니다.
 
 ## 워커와 라벨
 
-`worker/`는 등록된 `{python}` argv만 `shell=False`로 실행합니다. 실패 로그의 라벨 초안은 워커가 고르지 않고, API의 `FailureRuleClassifier`가 키워드로 만듭니다. TUI DEMO도 같은 목록을 `rules.py`로 적용합니다. 기본 모델이 있으면 새 초안은 `MODEL`이고, 없으면 `RULE_BASED`입니다. 서버는 체크포인트를 실행하지 않고, 학습기가 argmax만 반환합니다. 외부 LLM과 임베딩 검색은 없습니다.
+`worker/`는 등록된 `{python}` argv만 `shell=False`로 실행합니다. 실패 로그의 라벨 초안은 워커가 고르지 않고, API의 `FailureRuleClassifier`가 키워드로 만듭니다. TUI DEMO도 같은 목록을 `rules.py`로 적용합니다. 기본 모델과 파일이 있으면 새 초안은 `MODEL`이고, 응답 전에는 `PENDING`입니다. 기본 모델이 없거나 파일·응답이 실패하면 `RULE_BASED`로 닫고 다시 추론하지 않습니다. 서버는 체크포인트를 실행하지 않고, 학습기가 argmax만 반환합니다. 외부 LLM과 유료 임베딩 API는 없습니다. 확정 기록의 로컬 해시 유사 검색은 PHASE 7에 있습니다.
+
+## PHASE 6 사용자 등록과 로그 가져오기
+
+```text
+LIVE TUI
+  -> POST /api/v1/projects
+  -> POST /api/v1/projects/{id}/tasks
+  -> RegisteredCommandResolver (등록 시)
+  -> POST /api/v1/jobs QUEUED
+  -> worker claim
+  -> RegisteredCommandResolver (실행 시, shell=False, {python}만)
+```
+
+DEMO는 프로젝트 등록, 작업 등록, 실패 로그 가져오기를 저장하지 않고 LIVE 전용이라고 거절합니다. `POST /api/v1/error-cases/import`는 작업을 만들지 않습니다. 사례의 `origin`은 `IMPORT`이고 `job_id`는 null입니다. 초안은 작업 실패와 같습니다. 기본 모델 파일이 없으면 `RULE_BASED`로 닫고, 파일이 맞으면 `MODEL`과 `PENDING`입니다.
+
+## PHASE 7 유사 검색과 근거 답변
+
+```text
+Review /similar 또는 /advise
+  -> POST /api/v1/search/similar
+  -> 확정 사례와 해결 기록만 hashing-char-ngram-v1 코사인
+  -> 기록 인용 답변 또는 "비슷한 확정 기록이 없습니다"
+```
+
+키워드 `GET /api/v1/search`는 그대로입니다. 유사도는 정답 확률이 아닙니다. 답변은 인용된 DB 기록만 말합니다.
 
 ## 학습
 
@@ -80,6 +105,20 @@ Java가 자격, 그룹 분할, 앵커, 저장, 체크섬, 지표 일치를 담�
 
 장치는 `cpu`, `cuda`, `auto`입니다. 환경 변수 `MAIDOPS_TRAIN_DEVICE`의 기본값은 `auto`입니다. `cuda`를 지정했는데 CUDA가 없으면 CPU로 바꾸지 않고 실패합니다. 모델 디렉터리는 `MAIDOPS_MODEL_DIR`이고 기본값은 `data/models`입니다. 백엔드와 학습기가 같은 디렉터리를 봐야 합니다.
 
+## PHASE 9 원클릭 LIVE
+
+```text
+scripts/run-live.ps1
+  -> docker compose -f infra/docker-compose.yml up --build -d
+  -> postgres healthy
+  -> backend GET /api/v1/health
+  -> worker POST /api/v1/worker/heartbeat
+  -> trainer POST /api/v1/trainer/heartbeat
+  -> database=UP, worker=CONNECTED, trainer=CONNECTED
+```
+
+Compose healthcheck는 컨테이너 안 alive 파일입니다. API의 `CONNECTED`는 `worker_sessions` 또는 `trainer_sessions`의 최근 heartbeat입니다. 백엔드만 띄우면 두 필드는 `NOT_CONNECTED`가 맞습니다. DEMO는 Compose를 요구하지 않습니다.
+
 ## 선택한 이후 단계 버전
 
 PHASE 1 의존성 위에 백엔드를 올렸습니다.
@@ -91,7 +130,7 @@ PHASE 1 의존성 위에 백엔드를 올렸습니다.
 - Textual 8.2.8. 2026-10-06에 PyPI 안정 최신으로 확인했고, 설치본의 `App.run_test`, `Binding.priority`, `RichLog.write`, `ContentSwitcher`, `HORIZONTAL_BREAKPOINTS`를 확인한 뒤 사용했다.
 - pytest 9.1.1, pytest-asyncio 1.4.0.
 - HTTP 클라이언트는 `httpx==0.28.1`이다.
-- PostgreSQL 16 이미지와 Compose 파일은 `infra/docker-compose.yml`에 있다. 백엔드 테스트는 내장 PostgreSQL을 사용한다. 이 개발 PC에는 Docker가 없어 Compose 기동은 확인하지 못했다.
+- PostgreSQL 16 이미지와 Compose 파일은 `infra/docker-compose.yml`에 있다. 백엔드 테스트는 내장 PostgreSQL을 사용한다. 2026-11-10 확인에서 Docker CLI 29.8.2와 Compose v5.6.0은 있고 `docker compose config`는 통과했다. 데몬 파이프 `dockerDesktopLinuxEngine`이 없어 `up`은 실행하지 못했다.
 - PyTorch 2.14.1 CPU 휠. 설치 인덱스는 `https://download.pytorch.org/whl/cpu`입니다. 이 PC에서는 `torch 2.14.1+cpu`가 설치되었고 `cuda.is_available()`은 거짓입니다. CUDA 학습 실행은 확인하지 않았습니다.
 
 Redis, Kafka, Kubernetes, 다중 에이전트는 초기 범위 밖이다.

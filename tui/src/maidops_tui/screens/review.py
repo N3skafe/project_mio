@@ -6,8 +6,10 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Button, DataTable, Input, Select, Static
 
+from maidops_tui.domain.checklists import checklist_text
 from maidops_tui.domain.errors import LabError, format_lab_error
-from maidops_tui.domain.models import ErrorCase, ErrorLabel, LabelSource, ReviewDecision, ReviewStatus
+from maidops_tui.domain.display import origin_caption
+from maidops_tui.domain.models import DataOrigin, ErrorCase, ErrorLabel, LabelSource, ReviewDecision, ReviewStatus
 from maidops_tui.widgets.host import ops_app
 
 
@@ -45,6 +47,9 @@ class ReviewView(Vertical):
                 yield Input(placeholder="원인", id="cause-input")
                 yield Input(placeholder="해결 방법", id="method-input")
                 yield Button("해결 기록 저장", id="save-resolution-button", compact=True)
+                yield Button("유사 사례", id="similar-button", compact=True)
+                yield Static("유사 사례는 확정 기록만 인용합니다.", id="similar-advice", markup=False)
+                yield Static("", id="review-checklist", markup=False)
                 yield Static("", id="revision-history", markup=False)
 
     def on_mount(self) -> None:
@@ -89,12 +94,25 @@ class ReviewView(Vertical):
             "revise-button",
             "defer-button",
             "save-resolution-button",
+            "similar-button",
         }:
             return
         event.stop()
         app = ops_app(self)
         if self.selected_case_id is None:
             app.write_activity("오류: 검토할 오류 사례가 없습니다. 실패한 가상 테스트를 먼저 실행하세요.")
+            return
+        if button_id == "similar-button":
+            try:
+                advice = await app.service.similar_search(error_case_id=self.selected_case_id)
+            except LabError as exc:
+                _write_action_error(app, exc)
+                return
+            lines = [advice.answer, advice.similarity_note]
+            for hit in advice.hits:
+                lines.append(f"{hit.hit_id} [{hit.origin.value}] {hit.label} 유사도 {hit.similarity:.2f}")
+            self.query_one("#similar-advice", Static).update("\n".join(lines))
+            app.write_activity(advice.answer)
             return
         if button_id == "save-resolution-button":
             cause = self.query_one("#cause-input", Input).value
@@ -141,21 +159,46 @@ class ReviewView(Vertical):
             text.update("표시할 오류 사례가 없습니다. Workspace에서 실패하는 가상 테스트를 실행하세요.")
             info.update("초안 생성 방식: 없음")
             history.update("")
+            self.query_one("#similar-advice", Static).update("유사 사례는 확정 기록만 인용합니다.")
+            self.query_one("#review-checklist", Static).update("")
             self._shown_case_id = None
             return
         text.update(f"원본 오류 텍스트\n{case.raw_text}")
         info.update("\n".join(_label_lines(case)))
         history.update(_format_revisions(case))
-        pending = case.draft_label is None
+        pending = case.inference_state == "PENDING" or case.draft_label is None
+        checklist_label = case.confirmed_label or case.draft_label
+        self.query_one("#review-checklist", Static).update(checklist_text(checklist_label, pending=pending))
         for button_id in ("approve-button", "revise-button", "defer-button", "save-resolution-button"):
             self.query_one(f"#{button_id}", Button).disabled = pending
         if case.id != self._shown_case_id:
+            self._request_similar(case.id)
             self._shown_case_id = case.id
             self.query_one("#label-select", Select).value = (
                 ErrorLabel.OTHER.value if case.current_label is None else case.current_label.value
             )
             self.query_one("#cause-input", Input).value = ""
             self.query_one("#method-input", Input).value = ""
+
+    def _request_similar(self, case_id: str) -> None:
+        self.query_one("#similar-advice", Static).update("비슷한 확정 기록을 찾고 있습니다.")
+        self.run_worker(self._load_similar(case_id), exclusive=True, group="similar-advice")
+
+    async def _load_similar(self, case_id: str) -> None:
+        try:
+            advice = await ops_app(self).service.similar_search(error_case_id=case_id)
+        except LabError as exc:
+            if self.selected_case_id == case_id:
+                self.query_one("#similar-advice", Static).update(
+                    "유사 검색에 실패했습니다. " + " ".join(format_lab_error(exc))
+                )
+            return
+        if self.selected_case_id != case_id:
+            return
+        lines = [advice.answer, advice.similarity_note]
+        for hit in advice.hits:
+            lines.append(f"{hit.hit_id} [{hit.origin.value}] {hit.label} 유사도 {hit.similarity:.2f}")
+        self.query_one("#similar-advice", Static).update("\n".join(lines))
 
 
 def _label_name(label: ErrorLabel | None) -> str:
@@ -164,24 +207,40 @@ def _label_name(label: ErrorLabel | None) -> str:
 
 def _label_lines(case: ErrorCase) -> list[str]:
     confirmed = "없음" if case.confirmed_label is None else case.confirmed_label.value
-    draft = "없음. 기본 모델의 초안을 기다리는 중입니다." if case.draft_label is None else case.draft_label.value
-    return [
+    pending = case.inference_state == "PENDING" or case.draft_label is None
+    draft = "없음. 초안 대기입니다." if case.draft_label is None else case.draft_label.value
+    lines = [
         f"예측 초안: {draft}",
         _source_line(case),
+    ]
+    if pending:
+        lines.append("초안 대기. 승인, 수정, 보류는 초안이 도착한 뒤에 할 수 있습니다.")
+    return lines + [
         f"확정 라벨: {confirmed}",
         "확정 라벨은 승인 또는 수정된 사례만 기록합니다.",
         f"검토 상태: {case.review_status.value}",
-        f"연결된 작업: {case.job_id}",
+        f"출처: {origin_caption(case.origin)}",
+        f"연결된 작업: {_linked_job(case)}",
+        *([f"가져오기 힌트: {case.source_hint}"] if case.source_hint else []),
     ]
+
+
+def _linked_job(case: ErrorCase) -> str:
+    if case.origin is DataOrigin.IMPORT or not case.job_id:
+        return "없음 (가져온 실패 로그)"
+    return case.job_id
 
 
 def _source_line(case: ErrorCase) -> str:
     if case.draft_source is LabelSource.RULE_BASED:
         version = case.rule_version or "알 수 없음"
-        keyword = case.matched_keyword or "없음"
+        if case.matched_keyword:
+            keyword = f"일치 키워드 {case.matched_keyword}"
+        else:
+            keyword = "등록된 키워드와 맞지 않아 OTHER입니다"
         return (
             f"생성 방식: RULE_BASED (규칙 기반 초안, 규칙 버전 {version}, "
-            f"일치 키워드 {keyword}. 모델 추론이 아니며 정답 확률이 아닙니다.)"
+            f"{keyword}. 모델 추론이 아니며 정답 확률이 아닙니다.)"
         )
     if case.draft_source is LabelSource.FIXTURE:
         return "생성 방식: FIXTURE (가상 fixture, 규칙 기반 분류와 모델 추론이 아닙니다.)"

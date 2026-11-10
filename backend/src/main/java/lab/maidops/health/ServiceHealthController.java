@@ -28,15 +28,19 @@ public class ServiceHealthController {
         Map<String, String> body = Map.of(
                 "status", databaseUp ? "UP" : "DOWN",
                 "database", databaseUp ? "UP" : "DOWN",
-                "worker", workerConnected() ? "CONNECTED" : "NOT_CONNECTED",
+                "worker", sessionConnected("worker_sessions") ? "CONNECTED" : "NOT_CONNECTED",
+                "trainer", sessionConnected("trainer_sessions") ? "CONNECTED" : "NOT_CONNECTED",
                 "authentication", "NONE");
         return ResponseEntity.status(databaseUp ? 200 : 503).body(body);
     }
 
-    private boolean workerConnected() {
+    private boolean sessionConnected(String table) {
+        if (!"worker_sessions".equals(table) && !"trainer_sessions".equals(table)) {
+            return false;
+        }
         try {
             Integer count = jdbcTemplate.queryForObject(
-                    "select count(*) from worker_sessions where last_heartbeat_at > ?",
+                    "select count(*) from " + table + " where last_heartbeat_at > ?",
                     Integer.class,
                     Timestamp.from(Instant.now().minusSeconds(heartbeatWindowSeconds)));
             return count != null && count > 0;

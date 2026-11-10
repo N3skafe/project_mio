@@ -29,13 +29,26 @@ def run_loop(
     try:
         while True:
             _touch(alive)
-            claimed = api.claim()
+            try:
+                api.presence()
+                claimed = api.claim()
+            except Exception:
+                if once:
+                    raise
+                time.sleep(idle_seconds)
+                continue
             if claimed is not None:
                 _train_claimed(api, claimed, model_dir, device)
                 if once:
                     return
                 continue
-            draft = api.claim_inference()
+            try:
+                draft = api.claim_inference()
+            except Exception:
+                if once:
+                    raise
+                time.sleep(idle_seconds)
+                continue
             if draft is not None:
                 _infer_claimed(api, draft, model_dir)
                 if once:

@@ -14,8 +14,10 @@ PHASE 2 HTTP API가 있습니다. JSON 필드는 snake_case이고 시각은 UTC�
 ```text
 GET  /api/v1/health
 GET  /api/v1/projects
+POST /api/v1/projects
 GET  /api/v1/projects/{id}
 GET  /api/v1/projects/{id}/tasks
+POST /api/v1/projects/{id}/tasks
 POST /api/v1/jobs
 GET  /api/v1/jobs
 GET  /api/v1/jobs/{id}
@@ -23,12 +25,14 @@ GET  /api/v1/jobs/{id}/events?after={sequence}
 POST /api/v1/jobs/{id}/cancel
 GET  /api/v1/error-cases
 GET  /api/v1/error-cases/confirmed
+POST /api/v1/error-cases/import
 GET  /api/v1/error-cases/{id}
 POST /api/v1/error-cases/{id}/reviews
 POST /api/v1/error-cases/{id}/resolutions
 GET  /api/v1/resolutions
 GET  /api/v1/resolutions?q={query}
 GET  /api/v1/search?q={query}
+POST /api/v1/search/similar
 GET  /api/v1/lab/status
 POST /api/v1/training-runs
 GET  /api/v1/training-runs
@@ -39,7 +43,7 @@ POST /api/v1/model-versions/{id}/select-default
 GET  /actuator/health
 ```
 
-`/api/v1/health`는 `status`, `database`, `worker`, `authentication`을 반환합니다. 최근 20초 안에 워커 heartbeat가 있으면 `worker`는 `CONNECTED`이고, 없으면 `NOT_CONNECTED`입니다. 데이터베이스가 내려가면 HTTP 503입니다.
+`/api/v1/health`는 `status`, `database`, `worker`, `trainer`, `authentication`을 반환합니다. 최근 20초 안에 heartbeat가 있으면 `worker`와 `trainer`는 각각 `CONNECTED`이고, 없으면 `NOT_CONNECTED`입니다. 학습기 대기는 `POST /api/v1/trainer/heartbeat`입니다. 데이터베이스가 내려가면 HTTP 503입니다. 워커나 학습기가 없어도 database가 UP이면 HTTP 200입니다.
 
 워커 전용 경로입니다. 사용자 명령 문자열이 아니라 서버에 등록된 argv만 claim 응답에 들어갑니다.
 
@@ -76,6 +80,16 @@ RUNNING -> FAILED
 
 finish 본문은 `exit_code`, `process_exited`, `timed_out`, `output_truncated`, `termination_reason`, `log_storage_incomplete`입니다. `process_exited`가 거짓이면 성공이나 `CANCELLED`로 닫지 않습니다. `termination_reason`은 `COMPLETED`, `FAILED`, `TIMED_OUT`, `CANCELLED`, `OUTPUT_LIMIT_EXCEEDED`, `SUPERVISION_FAILED` 중 하나이거나 생략입니다. `OUTPUT_LIMIT_EXCEEDED`는 워커가 출력 바이트 한도로 프로세스를 중단한 경우이며, `exit_code`가 0이어도 `FAILED`입니다. 응답의 `output_truncated`가 참이어도 `termination_reason`이 `OUTPUT_LIMIT_EXCEEDED`가 아니면, 그 표시는 서버가 보관 줄 수를 줄인 것이며 성공 작업을 실패로 바꾸지 않습니다. `SUPERVISION_FAILED`도 성공으로 저장하지 않습니다. 실패로 닫힌 작업은 다시 큐에 넣지 않습니다.
 
+## 사용자 등록과 로그 가져오기
+
+신뢰하는 프로젝트만 등록합니다. 서버는 `MAIDOPS_WORKSPACE_ROOT` 밖을 등록하거나 실행하지 않습니다.
+
+`POST /api/v1/projects` 본문은 `id`, `name`(또는 `display_name`), 선택 `summary`입니다. `id`는 소문자, 숫자, 하이픈만 쓰고 2자 이상 63자 이하입니다. 중복은 409 `STATE`입니다. 작업이 생기기 전에는 `default_task_id`가 null입니다. 첫 작업이 기본 작업이 됩니다.
+
+`POST /api/v1/projects/{id}/tasks` 본문은 `id`, `name`, `plan_text`, `argv_json`, `relative_workdir`, `timeout_seconds`입니다. `registered_tasks.id`는 기본키라 작업 id는 프로젝트와 상관없이 전체에서 유일합니다. 같은 id를 다시 등록하면 409 `STATE`이고 메시지에 전체 유일을 적습니다. 스키마는 복합키로 바꾸지 않습니다. `argv_json`은 문자열 배열이고 첫 토큰은 `{python}`만 허용합니다. `relative_workdir`와 스크립트는 workspace 루트 안의 존재하는 디렉터리와 파일이어야 합니다. 등록 시 `RegisteredCommandResolver`가 거절하고, 실행 시 워커가 다시 검사합니다. `timeout_seconds`는 1 이상 120 이하입니다. 없는 스크립트, 절대 경로, 경로 탈출, workspace 밖, 셸 연산자, 다른 실행 파일은 400 `VALIDATION`입니다.
+
+`POST /api/v1/error-cases/import` 본문은 `project_id`, `raw_log` 또는 `lines`, 선택 `source_hint` 또는 `title`입니다. 로그는 8000자 이하입니다. 빈 로그와 없는 프로젝트는 거절합니다. 저장 전에 워커와 같은 비밀 가리기를 적용합니다. 초안은 작업 실패와 같은 경로입니다. 기본 모델이 없거나 모델 파일이 없으면 `RULE_BASED`와 `rules-1`로 닫고 다시 추론하지 않습니다. 기본 모델 파일이 체크섬과 맞으면 `MODEL`이고 `inference_state`는 `PENDING`입니다. `origin`은 `IMPORT`이고 `job_id`는 null입니다. 성공 작업을 만들지 않습니다. 승인, 수정, 보류, 해결 메모는 기존 검토 API를 사용합니다.
+
 ## 오류 라벨
 
 실패하면 오류 사례 하나를 저장합니다. `draft_label`, `draft_source`, `rule_version`, `matched_keyword`는 예측 초안입니다. 기본 모델이 없으면 `draft_source`는 `RULE_BASED`이고 `rule_version`은 `rules-1`입니다. 기본 모델이 있고 파일이 있으면 `inference_state`는 `PENDING`이고 라벨은 null입니다. 학습기가 argmax 라벨을 반환하면 `draft_source`는 `MODEL`입니다. 파일이나 응답이 없으면 규칙 초안으로 닫고 다시 추론하지 않습니다. 일치 키워드와 softmax는 정답 확률이 아니며 `score` 필드는 없습니다. `PENDING`인 사례는 승인, 수정, 보류가 거절됩니다.
@@ -84,7 +98,9 @@ finish 본문은 `exit_code`, `process_exited`, `timed_out`, `output_truncated`,
 
 `revisions`가 변경 이력입니다. 초안 행의 `source`는 `RULE_BASED`이고, 승인·수정·보류 행의 `source`는 `USER`입니다. 원인과 해결 방법은 승인 또는 수정 뒤에 저장합니다.
 
-`GET /api/v1/search?q=`는 작업 로그, 오류 원문, 원인, 해결 방법을 키워드로 찾습니다. 일치가 없으면 `items`가 빈 배열입니다. 임베딩 검색과 외부 LLM은 없습니다.
+`GET /api/v1/search?q=`는 작업 로그, 오류 원문, 원인, 해결 방법을 키워드로 찾습니다. 일치가 없으면 `items`가 빈 배열입니다. 이 경로는 유지합니다.
+
+`POST /api/v1/search/similar` 본문은 `raw_log` 또는 `error_case_id` 중 하나입니다. 비교 대상은 승인·수정된 사례와 그 해결 기록입니다. 초안과 보류는 제외합니다. `error_case_id`로 검색하면 그 사례 자신은 hit에서 빠집니다. 응답의 `hits`는 `kind`, `origin`, `id`, `label`, `similarity`, `excerpt`, `cause`, `method`를 가집니다. `similarity`는 `hashing-char-ngram-v1` 코사인이며 정답 확률이 아닙니다. `answer`는 그 기록만 인용합니다. hit가 없으면 `비슷한 확정 기록이 없습니다`이고 점수를 만들지 않습니다. 외부 LLM은 없습니다.
 
 ## 학습
 

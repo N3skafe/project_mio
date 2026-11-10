@@ -22,6 +22,7 @@ from maidops_tui.domain.models import (
     RunPlan,
     SearchHit,
     ServiceEvent,
+    SimilarAdvice,
 )
 
 
@@ -31,6 +32,8 @@ class LabService(Protocol):
     def connection_label(self) -> str: ...
 
     def worker_connected(self) -> bool: ...
+
+    def trainer_connected(self) -> bool: ...
 
     def add_listener(self, listener: Callable[[ServiceEvent], None]) -> None: ...
 
@@ -45,6 +48,26 @@ class LabService(Protocol):
     async def list_tasks(self) -> list[RegisteredTask]: ...
 
     async def select_task(self, task_id: str) -> RegisteredTask: ...
+
+    async def register_project(self, project_id: str, name: str, summary: str) -> Project: ...
+
+    async def register_task(
+        self,
+        project_id: str,
+        task_id: str,
+        name: str,
+        plan_text: str,
+        relative_workdir: str,
+        script: str,
+        timeout_seconds: int,
+    ) -> RegisteredTask: ...
+
+    async def import_failure_log(
+        self,
+        project_id: str,
+        raw_log: str,
+        source_hint: str | None = None,
+    ) -> ErrorCase: ...
 
     async def get_run_plan(self) -> RunPlan: ...
 
@@ -74,6 +97,13 @@ class LabService(Protocol):
     async def list_resolutions(self) -> list[ResolutionRecord]: ...
 
     async def search_history(self, query: str) -> list[SearchHit]: ...
+
+    async def similar_search(
+        self,
+        *,
+        raw_log: str | None = None,
+        error_case_id: str | None = None,
+    ) -> SimilarAdvice: ...
 
     async def lab_status(self) -> LabStatus: ...
 

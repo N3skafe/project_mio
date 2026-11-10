@@ -207,3 +207,18 @@ async def test_live_mode_screen_shows_disconnected() -> None:
         assert any("백엔드에 연결하지 못했습니다" in line for line in app.activity_lines)
         assert any("성공으로 처리하지 않습니다" in line for line in app.activity_lines)
         assert app.service.connection_status().value == "DISCONNECTED"
+
+
+async def test_demo_intake_controls_stay_disabled() -> None:
+    app = make_app()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert app.query_one("#add-project-button", Button).disabled is True
+        assert app.query_one("#add-task-button", Button).disabled is True
+        assert app.query_one("#import-log-button", Button).disabled is True
+        assert "LIVE에서만" in str(app.query_one("#intake-notice", Static).content)
+        await submit(pilot, app, "/project add my-api 내 API")
+        assert any("LIVE에서만" in line for line in app.activity_lines)
+        await submit(pilot, app, "/import-log demo-api boom")
+        assert any("실패 로그 가져오기는 LIVE에서만" in line for line in app.activity_lines)
+        assert all("작업을 만들지 않았습니다" not in line for line in app.activity_lines)

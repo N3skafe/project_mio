@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from maidops_tui.commands.help_text import help_lines
 from maidops_tui.commands.parser import CommandName, ParsedCommand, parse_command
 from maidops_tui.domain.display import display_status, format_elapsed
-from maidops_tui.domain.errors import LabError, format_lab_error
+from maidops_tui.domain.errors import LabError, StateError, format_lab_error
 from maidops_tui.domain.models import JobStatus, ScreenId
 from maidops_tui.services.protocol import LabService
 
@@ -66,6 +66,60 @@ async def _execute(service: LabService, command: ParsedCommand) -> CommandResult
             (f"프로젝트를 선택했습니다: {project.id} {project.name}",),
             screen=ScreenId.WORKSPACE,
         )
+    if command.name is CommandName.PROJECT_ADD:
+        assert command.argument is not None
+        project = await service.register_project(command.argument, " ".join(command.extra), "")
+        return CommandResult(
+            True,
+            (
+                f"프로젝트를 등록했습니다: {project.id} {project.name}",
+                "신뢰하는 workspace 안의 등록 명령만 실행합니다.",
+            ),
+            screen=ScreenId.WORKSPACE,
+        )
+    if command.name is CommandName.TASK_ADD:
+        assert command.argument is not None
+        workdir, script, timeout, *name_parts = command.extra
+        selected = await service.get_selected_project()
+        if selected is None:
+            raise StateError("작업을 등록할 프로젝트를 먼저 선택하세요.", "/project select trusted-sample")
+        task = await service.register_task(
+            selected.id,
+            command.argument,
+            " ".join(name_parts),
+            f"등록된 명령 {{python}} {script}. 작업 디렉터리 {workdir}. 임의 셸은 실행하지 않습니다.",
+            workdir,
+            script,
+            int(timeout),
+        )
+        return CommandResult(
+            True,
+            (
+                f"작업을 등록했습니다: {task.id}",
+                "첫 토큰은 {python}이고, 스크립트는 workspace 안 파일이어야 합니다.",
+            ),
+            screen=ScreenId.WORKSPACE,
+        )
+    if command.name is CommandName.IMPORT_LOG:
+        assert command.argument is not None
+        case = await service.import_failure_log(command.argument, " ".join(command.extra))
+        label = "대기" if case.draft_label is None else case.draft_label.value
+        return CommandResult(
+            True,
+            (
+                f"실패 로그를 가져왔습니다: {case.id}",
+                f"출처: {case.origin.value}  초안: {label}  {case.draft_source.value}",
+                "작업을 만들지 않았습니다. 승인이나 수정 뒤에만 해결 메모를 저장합니다.",
+            ),
+            screen=ScreenId.REVIEW,
+        )
+    if command.name is CommandName.SIMILAR:
+        advice = await service.similar_search(raw_log=" ".join(command.extra))
+        return CommandResult(True, _advice_lines(advice), screen=ScreenId.REVIEW)
+    if command.name is CommandName.ADVISE:
+        assert command.argument is not None
+        advice = await service.similar_search(error_case_id=command.argument)
+        return CommandResult(True, _advice_lines(advice), screen=ScreenId.REVIEW)
     if command.name is CommandName.TEST:
         job = await service.create_test_job()
         if job.status is JobStatus.QUEUED:
@@ -98,10 +152,19 @@ async def _execute(service: LabService, command: ParsedCommand) -> CommandResult
     raise AssertionError(f"unhandled command: {command.name}")
 
 
+def _advice_lines(advice) -> tuple[str, ...]:
+    lines = [advice.answer, advice.similarity_note]
+    for hit in advice.hits:
+        lines.append(
+            f"{hit.hit_id} [{hit.origin.value}] {hit.label} 유사도 {hit.similarity:.2f} {hit.excerpt}"
+        )
+    return tuple(lines)
+
+
 async def _project_lines(service: LabService) -> list[str]:
     projects = await service.list_projects()
     selected = await service.get_selected_project()
-    lines = ["등록 프로젝트 (가상 fixture):"]
+    lines = ["등록 프로젝트:"]
     for project in projects:
         mark = "선택" if selected is not None and selected.id == project.id else "-"
         lines.append(f"{mark}  {project.id}  {project.name}  {project.summary}")

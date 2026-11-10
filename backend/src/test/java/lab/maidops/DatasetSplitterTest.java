@@ -35,6 +35,14 @@ class DatasetSplitterTest {
     }
 
     @Test
+    void importedCasesWithoutAJobStaySeparate() {
+        List<AssignedRow> assigned = DatasetSplitter.assign(List.of(
+                new Row("case-a", null, "disk full on alpha", ErrorLabel.OTHER),
+                new Row("case-b", null, "timeout on beta", ErrorLabel.EXTERNAL_NETWORK)), Map.of());
+        assertThat(assigned.get(0).groupKey()).isNotEqualTo(assigned.get(1).groupKey());
+    }
+
+    @Test
     void firstSplitMeetsTheGateAndStaysFixed() {
         List<Row> rows = new ArrayList<>();
         for (int index = 0; index < WORDS.length; index++) {

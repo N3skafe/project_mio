@@ -242,6 +242,17 @@ public class TrainingService {
     }
 
     @Transactional
+    public void presence(String trainerId) {
+        requireTrainerId(trainerId);
+        jdbcTemplate.update(
+                """
+                insert into trainer_sessions (trainer_id, last_heartbeat_at) values (?, ?)
+                on conflict (trainer_id) do update set last_heartbeat_at = excluded.last_heartbeat_at
+                """,
+                trainerId,
+                Timestamp.from(Instant.now()));
+    }
+
     public Optional<ClaimedTraining> claim(String trainerId) {
         requireTrainerId(trainerId);
         Instant now = Instant.now();

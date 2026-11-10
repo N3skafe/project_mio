@@ -24,7 +24,9 @@ import lab.maidops.errorcase.ErrorCaseRepository;
 import lab.maidops.errorcase.FailureRuleClassifier;
 import lab.maidops.errorcase.FailureRuleClassifier.RuleDraft;
 import lab.maidops.errorcase.LabelRevisionEntity;
+import lab.maidops.errorcase.SecretMasker;
 import lab.maidops.job.IdAllocator;
+import lab.maidops.project.ProjectRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -43,8 +45,11 @@ public class ModelDraftService {
     private static final String FILE_MISSING =
             "기본 모델 파일이 없습니다. 규칙 초안으로 남겼습니다. 모델 예측이 아닙니다.";
 
+    private static final int IMPORT_LIMIT = 8000;
+
     private final ErrorCaseRepository cases;
     private final ModelVersionRepository models;
+    private final ProjectRepository projects;
     private final IdAllocator ids;
     private final JdbcTemplate jdbcTemplate;
     private final Path modelDir;
@@ -53,12 +58,14 @@ public class ModelDraftService {
     public ModelDraftService(
             ErrorCaseRepository cases,
             ModelVersionRepository models,
+            ProjectRepository projects,
             IdAllocator ids,
             JdbcTemplate jdbcTemplate,
             @Value("${maidops.model-dir}") String modelDir,
             @Value("${maidops.inference-lease-seconds:600}") int leaseSeconds) {
         this.cases = cases;
         this.models = models;
+        this.projects = projects;
         this.ids = ids;
         this.jdbcTemplate = jdbcTemplate;
         this.modelDir = Path.of(modelDir).toAbsolutePath().normalize();
@@ -76,17 +83,45 @@ public class ModelDraftService {
 
     @Transactional
     public void recordFailure(String jobId, String projectId, String rawText, Instant now) {
+        openCase(jobId, projectId, rawText, now, DataOrigin.SESSION, null);
+    }
+
+    @Transactional
+    public ErrorCaseEntity importLog(String projectId, String rawLog, java.util.List<String> lines, String sourceHint, String title) {
+        if (projectId == null || projectId.isBlank() || !projects.existsById(projectId)) {
+            throw new ApiException(404, "NOT_FOUND", "프로젝트를 찾지 못했습니다: " + projectId, "/project list");
+        }
+        String text = combinedLog(rawLog, lines);
+        if (text.isBlank()) {
+            throw new ApiException(400, "VALIDATION", "가져올 실패 로그가 비어 있습니다.", "Connection to localhost:5432 refused");
+        }
+        if (text.length() > IMPORT_LIMIT) {
+            throw new ApiException(400, "VALIDATION", "실패 로그는 8000자 이하여야 합니다.", "");
+        }
+        String masked = SecretMasker.mask(text);
+        String hint = firstText(sourceHint, title);
+        if (hint != null && hint.length() > 200) {
+            throw new ApiException(400, "VALIDATION", "source_hint는 200자 이하여야 합니다.", "지난 배포 로그");
+        }
+        return openCase(null, projectId, masked, Instant.now(), DataOrigin.IMPORT, hint);
+    }
+
+    private ErrorCaseEntity openCase(
+            String jobId,
+            String projectId,
+            String rawText,
+            Instant now,
+            DataOrigin origin,
+            String sourceHint) {
         Optional<ModelVersionEntity> selected = models.findByDefaultModelTrue();
         if (selected.isEmpty()) {
-            saveRule(jobId, projectId, rawText, now, null, null);
-            return;
+            return saveRule(jobId, projectId, rawText, now, origin, sourceHint, null, null);
         }
         ModelVersionEntity model = selected.get();
         if (!fileMatches(model)) {
-            saveRule(jobId, projectId, rawText, now, null, FILE_MISSING);
-            return;
+            return saveRule(jobId, projectId, rawText, now, origin, sourceHint, null, FILE_MISSING);
         }
-        ErrorCaseEntity errorCase = baseCase(jobId, projectId, rawText, now);
+        ErrorCaseEntity errorCase = baseCase(jobId, projectId, rawText, now, origin, sourceHint);
         errorCase.setDraftSource(LabelSource.MODEL);
         errorCase.setInferenceState(InferenceState.PENDING);
         errorCase.setModelVersionId(model.getId());
@@ -102,6 +137,7 @@ public class ModelDraftService {
                 model.getId(),
                 Timestamp.from(now.plusSeconds(leaseSeconds)),
                 Timestamp.from(now));
+        return errorCase;
     }
 
     @Transactional
@@ -272,9 +308,17 @@ public class ModelDraftService {
                 now));
     }
 
-    private void saveRule(String jobId, String projectId, String rawText, Instant now, String modelId, String extra) {
+    private ErrorCaseEntity saveRule(
+            String jobId,
+            String projectId,
+            String rawText,
+            Instant now,
+            DataOrigin origin,
+            String sourceHint,
+            String modelId,
+            String extra) {
         RuleDraft draft = FailureRuleClassifier.classify(rawText);
-        ErrorCaseEntity errorCase = baseCase(jobId, projectId, rawText, now);
+        ErrorCaseEntity errorCase = baseCase(jobId, projectId, rawText, now, origin, sourceHint);
         errorCase.setDraftLabel(draft.label());
         errorCase.setCurrentLabel(draft.label());
         errorCase.setDraftSource(LabelSource.RULE_BASED);
@@ -288,19 +332,51 @@ public class ModelDraftService {
                 LabelSource.RULE_BASED,
                 ruleNote(draft, extra),
                 now));
-        cases.save(errorCase);
+        return cases.save(errorCase);
     }
 
-    private ErrorCaseEntity baseCase(String jobId, String projectId, String rawText, Instant now) {
+    private ErrorCaseEntity baseCase(
+            String jobId,
+            String projectId,
+            String rawText,
+            Instant now,
+            DataOrigin origin,
+            String sourceHint) {
         ErrorCaseEntity errorCase = new ErrorCaseEntity();
         errorCase.setId(ids.nextErrorCaseId());
         errorCase.setJobId(jobId);
         errorCase.setProjectId(projectId);
         errorCase.setRawText(rawText);
         errorCase.setReviewStatus(ReviewStatus.DRAFT);
-        errorCase.setOrigin(DataOrigin.SESSION);
+        errorCase.setOrigin(origin);
+        errorCase.setSourceHint(sourceHint);
         errorCase.setCreatedAt(now);
         return errorCase;
+    }
+
+    private static String combinedLog(String rawLog, java.util.List<String> lines) {
+        if (rawLog != null && !rawLog.isBlank()) {
+            return rawLog.replace("\r\n", "\n").replace('\r', '\n');
+        }
+        if (lines == null || lines.isEmpty()) {
+            return "";
+        }
+        return lines.stream()
+                .map(line -> line == null ? "" : line)
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("")
+                .replace("\r\n", "\n")
+                .replace('\r', '\n');
+    }
+
+    private static String firstText(String primary, String fallback) {
+        if (primary != null && !primary.isBlank()) {
+            return primary.trim();
+        }
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback.trim();
+        }
+        return null;
     }
 
     private boolean fileMatches(ModelVersionEntity model) {

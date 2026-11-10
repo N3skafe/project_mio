@@ -111,8 +111,26 @@ Screen.-narrow #activity-log {
     border: solid $maid-line;
 }
 
+#intake-notice {
+    height: 1;
+}
+
 #workspace-actions, #review-actions, #lab-actions, #history-search-row {
-    height: 3;
+    height: auto;
+    min-height: 3;
+}
+
+#intake-dialog {
+    width: 72;
+    height: auto;
+    max-height: 90%;
+    background: $maid-panel;
+    border: solid $maid-blue;
+    padding: 1 1;
+}
+
+#intake-log {
+    height: 8;
 }
 
 #review-body {

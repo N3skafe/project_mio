@@ -85,9 +85,11 @@ public final class DatasetSplitter {
         for (int index = 0; index < count; index++) {
             Row row = rows.get(index);
             templates[index] = templateHash(row.rawText());
-            Integer jobSeen = jobOwner.putIfAbsent(row.jobId(), index);
-            if (jobSeen != null) {
-                union(parent, jobSeen, index);
+            if (row.jobId() != null) {
+                Integer jobSeen = jobOwner.putIfAbsent(row.jobId(), index);
+                if (jobSeen != null) {
+                    union(parent, jobSeen, index);
+                }
             }
             Integer templateSeen = templateOwner.putIfAbsent(templates[index], index);
             if (templateSeen != null) {

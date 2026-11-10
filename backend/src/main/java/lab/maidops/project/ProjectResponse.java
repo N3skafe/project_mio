@@ -8,9 +8,23 @@ public record ProjectResponse(String id, String name, String summary, String def
     }
 }
 
-record TaskResponse(String id, String projectId, String name, String planText) {
+record TaskResponse(
+        String id,
+        String projectId,
+        String name,
+        String planText,
+        String argvJson,
+        String relativeWorkdir,
+        Integer timeoutSeconds) {
     static TaskResponse from(RegisteredTaskEntity entity) {
-        return new TaskResponse(entity.getId(), entity.getProjectId(), entity.getName(), entity.getPlanText());
+        return new TaskResponse(
+                entity.getId(),
+                entity.getProjectId(),
+                entity.getName(),
+                entity.getPlanText(),
+                entity.getArgvJson(),
+                entity.getRelativeWorkdir(),
+                entity.getTimeoutSeconds());
     }
 }
 

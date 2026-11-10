@@ -105,7 +105,7 @@ async def test_api_service_keeps_queued_job() -> None:
         assert job.termination_reason is None
         output = await service.get_job_output(job.id)
         assert all("RESULT PASS" not in line.text and "RESULT FAIL" not in line.text for line in output)
-        assert service.connection_label() == "CONNECTED(실행 워커 없음)"
+        assert service.connection_label() == "CONNECTED(실행 워커 없음, 학습기 없음)"
         plan = await service.get_run_plan()
         assert plan.task.outcome is None
         assert "QUEUED" in plan.describe()

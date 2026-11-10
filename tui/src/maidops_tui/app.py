@@ -15,6 +15,7 @@ from textual.css.query import NoMatches
 from textual.widgets import ContentSwitcher, Footer, Input, RichLog, Static
 
 from maidops_tui.characters.state import derive_character_state
+from maidops_tui.commands.help_text import live_checklist_text
 from maidops_tui.commands.executor import run_command_text
 from maidops_tui.config import AppConfig, load_config
 from maidops_tui.domain.display import empty_lab_status, format_header
@@ -250,6 +251,8 @@ class MaidOpsApp(App[None]):
 
     async def _refresh_contents(self) -> None:
         connection = self.service.connection_status()
+        self._query(WorkspaceView).set_intake_available(self.config.mode is RunMode.LIVE)
+        self._set_live_checklist()
         try:
             projects = await self.service.list_projects()
             selected = await self.service.get_selected_project()
@@ -264,6 +267,7 @@ class MaidOpsApp(App[None]):
             self._query(LabView).apply(empty_lab_status())
             self._set_header(None, connection)
             self._set_character(CharacterState.DISCONNECTED)
+            self._set_live_checklist()
             return
 
         workspace = self._query(WorkspaceView)
@@ -327,6 +331,26 @@ class MaidOpsApp(App[None]):
         status = lab.status()
         return status is not None and status.active_run_status in {"QUEUED", "RUNNING"}
 
+    def _set_live_checklist(self) -> None:
+        workspace = self._query(WorkspaceView)
+        if self.config.mode is not RunMode.LIVE:
+            workspace.set_live_checklist("")
+            return
+        if self.service.connection_status() is not ConnectionStatus.CONNECTED:
+            workspace.set_live_checklist(
+                "LIVE 백엔드에 연결되지 않았습니다. .\\scripts\\run-live.ps1 또는 .\\scripts\\doctor-live.ps1 을 확인하세요."
+            )
+            return
+        worker = "CONNECTED" if self.service.worker_connected() else "NOT_CONNECTED"
+        trainer = "CONNECTED" if self.service.trainer_connected() else "NOT_CONNECTED"
+        workspace.set_live_checklist(
+            live_checklist_text(
+                backend_url=self.config.backend_url,
+                worker=worker,
+                trainer=trainer,
+            )
+        )
+
     def _set_header(self, project: Project | None, connection: ConnectionStatus) -> None:
         del connection
         name = project.name if project is not None else "없음"
@@ -352,4 +376,5 @@ class MaidOpsApp(App[None]):
             quiet=self.quiet,
             connected=self.service.connection_status() is ConnectionStatus.CONNECTED,
             worker_connected=self.service.worker_connected(),
+            trainer_connected=self.service.trainer_connected(),
         )

@@ -114,6 +114,7 @@ class ReviewDecision(StrEnum):
 class DataOrigin(StrEnum):
     FIXTURE = "FIXTURE"
     SESSION = "SESSION"
+    IMPORT = "IMPORT"
 
 
 class VirtualOutcome(StrEnum):
@@ -126,7 +127,7 @@ class Project:
     id: str
     name: str
     summary: str
-    default_task_id: str
+    default_task_id: str | None
 
 
 @dataclass(frozen=True)
@@ -205,7 +206,7 @@ class LabelRevision:
 @dataclass
 class ErrorCase:
     id: str
-    job_id: str
+    job_id: str | None
     project_id: str
     raw_text: str
     draft_label: ErrorLabel | None
@@ -218,6 +219,7 @@ class ErrorCase:
     matched_keyword: str | None = None
     inference_state: str = "READY"
     model_version_id: str | None = None
+    source_hint: str | None = None
 
     @property
     def confirmed_label(self) -> ErrorLabel | None:
@@ -252,6 +254,27 @@ class SearchHit:
     origin: DataOrigin
     title: str
     excerpt: str
+
+
+@dataclass(frozen=True)
+class SimilarHit:
+    kind: SearchKind
+    origin: DataOrigin
+    hit_id: str
+    error_case_id: str
+    label: str
+    similarity: float
+    excerpt: str
+    cause: str | None
+    method: str | None
+
+
+@dataclass(frozen=True)
+class SimilarAdvice:
+    embedding_id: str
+    similarity_note: str
+    answer: str
+    hits: tuple[SimilarHit, ...]
 
 
 @dataclass(frozen=True)

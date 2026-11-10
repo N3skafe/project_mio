@@ -37,6 +37,14 @@ def format_elapsed(seconds: float) -> str:
     return f"{seconds:.1f}s"
 
 
+def origin_caption(origin: DataOrigin) -> str:
+    if origin is DataOrigin.FIXTURE:
+        return "FIXTURE 가상 기록"
+    if origin is DataOrigin.IMPORT:
+        return "IMPORT 가져온 로그"
+    return "SESSION 작업 실패"
+
+
 def format_connection(status: ConnectionStatus) -> str:
     if status is ConnectionStatus.DEMO:
         return "DEMO(가상, 백엔드 없음)"

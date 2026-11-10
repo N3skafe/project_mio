@@ -35,6 +35,8 @@ from maidops_tui.domain.models import (
     SearchHit,
     SearchKind,
     ServiceEvent,
+    SimilarAdvice,
+    SimilarHit,
 )
 
 _LISTENER = Callable[[ServiceEvent], None]
@@ -49,6 +51,7 @@ class ApiService:
         )
         self._status = ConnectionStatus.DISCONNECTED
         self._worker_state = "NOT_CONNECTED"
+        self._trainer_state = "NOT_CONNECTED"
         self._selected_project_id: str | None = None
         self._selected_task_id: str | None = None
         self._listeners: list[_LISTENER] = []
@@ -59,12 +62,15 @@ class ApiService:
     def connection_label(self) -> str:
         if self._status is not ConnectionStatus.CONNECTED:
             return "DISCONNECTED"
-        if self._worker_state == "CONNECTED":
-            return "CONNECTED"
-        return "CONNECTED(실행 워커 없음)"
+        worker = "워커 연결" if self._worker_state == "CONNECTED" else "실행 워커 없음"
+        trainer = "학습기 연결" if self._trainer_state == "CONNECTED" else "학습기 없음"
+        return f"CONNECTED({worker}, {trainer})"
 
     def worker_connected(self) -> bool:
         return self._worker_state == "CONNECTED"
+
+    def trainer_connected(self) -> bool:
+        return self._trainer_state == "CONNECTED"
 
     def add_listener(self, listener: _LISTENER) -> None:
         self._listeners.append(listener)
@@ -111,17 +117,75 @@ class ApiService:
         self._emit(ServiceEvent("project_changed", task.id))
         return task
 
+    async def register_project(self, project_id: str, name: str, summary: str) -> Project:
+        payload = await self._send_json(
+            "POST",
+            "/api/v1/projects",
+            json={"id": project_id, "name": name, "summary": summary},
+        )
+        project = _project(payload)
+        self._selected_project_id = project.id
+        self._selected_task_id = None
+        self._emit(ServiceEvent("project_changed", project.id))
+        return project
+
+    async def register_task(
+        self,
+        project_id: str,
+        task_id: str,
+        name: str,
+        plan_text: str,
+        relative_workdir: str,
+        script: str,
+        timeout_seconds: int,
+    ) -> RegisteredTask:
+        payload = await self._send_json(
+            "POST",
+            f"/api/v1/projects/{project_id}/tasks",
+            json={
+                "id": task_id,
+                "name": name,
+                "plan_text": plan_text,
+                "argv_json": ["{python}", script],
+                "relative_workdir": relative_workdir,
+                "timeout_seconds": timeout_seconds,
+            },
+        )
+        task = _task(payload)
+        self._selected_project_id = project_id
+        self._selected_task_id = task.id
+        self._emit(ServiceEvent("project_changed", task.id))
+        return task
+
+    async def import_failure_log(
+        self,
+        project_id: str,
+        raw_log: str,
+        source_hint: str | None = None,
+    ) -> ErrorCase:
+        body: dict[str, str] = {"project_id": project_id, "raw_log": raw_log}
+        if source_hint:
+            body["source_hint"] = source_hint
+        case = _case(await self._send_json("POST", "/api/v1/error-cases/import", json=body))
+        self._emit(ServiceEvent("case_changed", case.id))
+        return case
+
     async def get_run_plan(self) -> RunPlan:
         project = await self.get_selected_project()
         if project is None:
             raise StateError("선택된 프로젝트가 없습니다.", "/project select demo-api")
         tasks = await self.list_tasks()
         chosen = self._selected_task_id
-        task = next((item for item in tasks if item.id == chosen), None)
-        if task is None:
+        task = next((item for item in tasks if item.id == chosen), None) if chosen else None
+        if task is None and project.default_task_id:
             task = next((item for item in tasks if item.id == project.default_task_id), None)
+        if task is None and tasks:
+            task = tasks[0]
         if task is None:
-            raise StateError("프로젝트의 기본 작업이 없습니다.", "/project list")
+            raise StateError(
+                "프로젝트의 기본 작업이 없습니다.",
+                "/task add my-check sample pass_check.py 10 통과 점검",
+            )
         return RunPlan(project=project, task=task)
 
     async def create_test_job(self) -> Job:
@@ -205,6 +269,20 @@ class ApiService:
         payload = await self._get_json("/api/v1/search", params={"q": keyword})
         return [_hit(item) for item in payload["items"]]
 
+    async def similar_search(
+        self,
+        *,
+        raw_log: str | None = None,
+        error_case_id: str | None = None,
+    ) -> SimilarAdvice:
+        body: dict[str, str] = {}
+        if raw_log:
+            body["raw_log"] = raw_log
+        if error_case_id:
+            body["error_case_id"] = error_case_id
+        payload = await self._send_json("POST", "/api/v1/search/similar", json=body)
+        return _advice(payload)
+
     async def lab_status(self) -> LabStatus:
         payload = await self._get_json("/api/v1/lab/status")
         models = tuple(_model(item) for item in payload.get("models") or [])
@@ -286,11 +364,13 @@ class ApiService:
         if body.get("status") != "UP" or body.get("database") != "UP":
             self._status = ConnectionStatus.DISCONNECTED
             self._worker_state = "NOT_CONNECTED"
+            self._trainer_state = "NOT_CONNECTED"
             raise LiveModeUnavailable(
                 "백엔드가 데이터베이스에 연결되지 않았습니다. 작업을 저장하지 않았습니다.",
                 "Docker Compose의 postgres healthcheck를 확인하세요.",
             )
         self._worker_state = str(body.get("worker") or "NOT_CONNECTED")
+        self._trainer_state = str(body.get("trainer") or "NOT_CONNECTED")
         self._status = ConnectionStatus.CONNECTED
 
     async def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
@@ -339,7 +419,7 @@ def _project(item: dict[str, Any]) -> Project:
         id=str(item["id"]),
         name=str(item["name"]),
         summary=str(item["summary"]),
-        default_task_id=str(item["default_task_id"]),
+        default_task_id=None if item.get("default_task_id") is None else str(item["default_task_id"]),
     )
 
 
@@ -387,7 +467,7 @@ def _case(item: dict[str, Any]) -> ErrorCase:
     ]
     return ErrorCase(
         id=str(item["id"]),
-        job_id=str(item["job_id"]),
+        job_id=None if item.get("job_id") is None else str(item["job_id"]),
         project_id=str(item["project_id"]),
         raw_text=str(item["raw_text"]),
         draft_label=None if item.get("draft_label") is None else ErrorLabel(str(item["draft_label"])),
@@ -400,6 +480,7 @@ def _case(item: dict[str, Any]) -> ErrorCase:
         matched_keyword=None if item.get("matched_keyword") is None else str(item["matched_keyword"]),
         inference_state=str(item.get("inference_state") or "READY"),
         model_version_id=None if item.get("model_version_id") is None else str(item["model_version_id"]),
+        source_hint=None if item.get("source_hint") is None else str(item["source_hint"]),
     )
 
 
@@ -413,6 +494,29 @@ def _resolution(item: dict[str, Any]) -> ResolutionRecord:
         method=str(item["method"]),
         origin=DataOrigin(str(item["origin"])),
         created_at=_instant(item["created_at"]),
+    )
+
+
+def _advice(item: dict[str, Any]) -> SimilarAdvice:
+    return SimilarAdvice(
+        embedding_id=str(item.get("embedding_id") or ""),
+        similarity_note=str(item.get("similarity_note") or ""),
+        answer=str(item.get("answer") or ""),
+        hits=tuple(_similar_hit(hit) for hit in item.get("hits") or []),
+    )
+
+
+def _similar_hit(item: dict[str, Any]) -> SimilarHit:
+    return SimilarHit(
+        kind=SearchKind(str(item["kind"])),
+        origin=DataOrigin(str(item["origin"])),
+        hit_id=str(item["id"]),
+        error_case_id=str(item.get("error_case_id") or ""),
+        label=str(item.get("label") or ""),
+        similarity=float(item.get("similarity") or 0.0),
+        excerpt=str(item.get("excerpt") or ""),
+        cause=None if item.get("cause") is None else str(item.get("cause")),
+        method=None if item.get("method") is None else str(item.get("method")),
     )
 
 

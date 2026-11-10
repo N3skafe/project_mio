@@ -31,11 +31,16 @@ class CharacterPanel(Vertical):
         quiet: bool,
         connected: bool = False,
         worker_connected: bool = False,
+        trainer_connected: bool = False,
     ) -> None:
         if mode is RunMode.DEMO:
             mode_text = "DEMO · 가상 이벤트"
+        elif worker_connected and trainer_connected:
+            mode_text = "LIVE · 워커·학습기 연결"
         elif worker_connected:
-            mode_text = "LIVE · 워커 연결"
+            mode_text = "LIVE · 워커 연결, 학습기 없음"
+        elif trainer_connected:
+            mode_text = "LIVE · 실행 워커 없음, 학습기 연결"
         elif connected:
             mode_text = "LIVE · 실행 워커 없음"
         else:

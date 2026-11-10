@@ -57,4 +57,32 @@ public class RegisteredTaskEntity {
     public Integer getTimeoutSeconds() {
         return timeoutSeconds;
     }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public void setProjectId(String projectId) {
+        this.projectId = projectId;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setPlanText(String planText) {
+        this.planText = planText;
+    }
+
+    public void setArgvJson(String argvJson) {
+        this.argvJson = argvJson;
+    }
+
+    public void setRelativeWorkdir(String relativeWorkdir) {
+        this.relativeWorkdir = relativeWorkdir;
+    }
+
+    public void setTimeoutSeconds(Integer timeoutSeconds) {
+        this.timeoutSeconds = timeoutSeconds;
+    }
 }

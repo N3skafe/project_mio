@@ -1,0 +1,49 @@
+{
+  "groups": [
+    {
+      "name": "maidops"
+    }
+  ],
+  "properties": [
+    {
+      "name": "maidops.event-limit",
+      "type": "java.lang.Integer",
+      "defaultValue": 500
+    },
+    {
+      "name": "maidops.workspace-root",
+      "type": "java.lang.String",
+      "defaultValue": ""
+    },
+    {
+      "name": "maidops.lease-seconds",
+      "type": "java.lang.Integer",
+      "defaultValue": 15
+    },
+    {
+      "name": "maidops.worker-heartbeat-window-seconds",
+      "type": "java.lang.Integer",
+      "defaultValue": 20
+    },
+    {
+      "name": "maidops.lease-sweep-ms",
+      "type": "java.lang.Integer",
+      "defaultValue": 5000
+    },
+    {
+      "name": "maidops.model-dir",
+      "type": "java.lang.String",
+      "defaultValue": "data/models"
+    },
+    {
+      "name": "maidops.training-lease-seconds",
+      "type": "java.lang.Integer",
+      "defaultValue": 120
+    },
+    {
+      "name": "maidops.inference-lease-seconds",
+      "type": "java.lang.Integer",
+      "defaultValue": 600
+    }
+  ]
+}

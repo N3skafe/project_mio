@@ -30,6 +30,12 @@ public class TrainerController {
         this.drafts = drafts;
     }
 
+    @PostMapping("/heartbeat")
+    public ResponseEntity<Void> presence(@RequestHeader("X-Trainer-Id") String trainerId) {
+        training.presence(trainerId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/claim")
     public ResponseEntity<ClaimedTraining> claim(@RequestHeader("X-Trainer-Id") String trainerId) {
         return training.claim(trainerId)
