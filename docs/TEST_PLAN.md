@@ -50,7 +50,7 @@ PHASE 1 테스트는 `tui/tests`에 있다. `cd tui` 후 `.venv`의 pytest로 �
 
 ## PHASE 2
 
-백엔드 테스트는 `backend`에서 `mvnw.cmd -B test`로 실행합니다. JDK 21이 필요합니다. 내장 PostgreSQL을 사용하며 Docker Compose 기동 테스트는 이 환경에서 실행하지 않습니다.
+백엔드 테스트는 `backend`에서 `mvnw.cmd -B test`로 실행합니다. JDK 21이 필요합니다. 내장 PostgreSQL은 Zonky가 고른 14.x이고 Compose 이미지는 PostgreSQL 16입니다. 메이저가 다르다는 점을 테스트 계획에 둡니다. Docker Compose 기동 테스트는 이 스위트에 없습니다.
 
 - `POST /api/v1/jobs`는 QUEUED이고 `started_at`이 비어 있으며 RESULT PASS/FAIL 이벤트가 없습니다.
 - 같은 Idempotency-Key와 같은 본문은 같은 작업을 반환합니다. 다른 본문은 409입니다.
@@ -78,7 +78,9 @@ TUI의 LIVE 테스트는 닫힌 포트와 MockTransport로 연결 실패와 QUEU
 
 - 확정 사례가 부족하면 409이고 학습 행과 점수가 없습니다. 초안과 보류는 건수에 넣지 않습니다.
 - 같은 작업이나 같은 정규화 템플릿은 한 분할에만 있습니다. 이후 실행에서 기존 TEST 템플릿은 TRAIN으로 옮기지 않습니다.
-- 손계산 혼동행렬의 macro F1은 47/60입니다. 지원이 0인 클래스의 F1은 null입니다.
+- 손계산 혼동행렬의 macro F1은 47/60입니다. 지원이 0인 클래스의 F1은 null입니다. 지원이 있고 예측이 0이면 그 클래스의 F1은 0이고 macro에 들어갑니다.
+- 형식 문자열이 없는 모델 파일은 complete에서 거절합니다. 형식 문자열이 있는 fixture 파일을 저장해도 그 테스트는 실측 학습이 아닙니다.
+- 같은 `expected_revision`으로 검토를 두 번 하면 두 번째는 409입니다.
 - 학습이 끝나도 `is_default`는 거짓입니다. 선택 뒤에만 참이고, 다음 모델이 그 기본값을 바꾸지 않습니다.
 - 임대가 끊기면 `FAILED`이고 다시 claim되지 않으며 모델 파일이 없습니다.
 - CPU에서 분리 가능한 토큰 데이터를 학습하면 테스트 macro F1이 규칙 baseline보다 큽니다. 그룹이 두 분할에 있으면 파일을 쓰지 않습니다.

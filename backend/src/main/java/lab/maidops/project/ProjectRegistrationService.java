@@ -3,8 +3,8 @@ package lab.maidops.project;
 import java.nio.file.Path;
 import java.util.List;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import lab.maidops.api.ApiException;
 import lab.maidops.worker.RegisteredCommandResolver;
 import org.springframework.beans.factory.annotation.Value;
@@ -109,7 +109,7 @@ public class ProjectRegistrationService {
     private String writeArgv(List<String> argv) {
         try {
             return objectMapper.writeValueAsString(argv);
-        } catch (JsonProcessingException exception) {
+        } catch (JacksonException exception) {
             throw new ApiException(400, "VALIDATION", "argv_json을 저장하지 못했습니다.", "[\"{python}\",\"pass_check.py\"]");
         }
     }

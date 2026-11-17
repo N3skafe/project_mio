@@ -27,10 +27,18 @@ public record ErrorCaseResponse(
         @JsonInclude(JsonInclude.Include.ALWAYS) String modelVersionId,
         @JsonInclude(JsonInclude.Include.ALWAYS) String sourceHint,
         Instant createdAt,
-        List<RevisionResponse> revisions) {
+        List<RevisionResponse> revisions,
+        @JsonInclude(JsonInclude.Include.ALWAYS) Long latestRevisionId) {
     public static ErrorCaseResponse from(ErrorCaseEntity entity) {
         boolean confirmed = entity.getReviewStatus() == ReviewStatus.APPROVED
                 || entity.getReviewStatus() == ReviewStatus.REVISED;
+        List<RevisionResponse> revisions = entity.getRevisions().stream().map(RevisionResponse::from).toList();
+        Long latestRevisionId = null;
+        for (RevisionResponse revision : revisions) {
+            if (revision.id() != null && (latestRevisionId == null || revision.id() > latestRevisionId)) {
+                latestRevisionId = revision.id();
+            }
+        }
         return new ErrorCaseResponse(
                 entity.getId(),
                 entity.getJobId(),
@@ -48,11 +56,13 @@ public record ErrorCaseResponse(
                 entity.getModelVersionId(),
                 entity.getSourceHint(),
                 entity.getCreatedAt(),
-                entity.getRevisions().stream().map(RevisionResponse::from).toList());
+                revisions,
+                latestRevisionId);
     }
 }
 
 record RevisionResponse(
+        Long id,
         ErrorLabel label,
         ReviewStatus reviewStatus,
         LabelSource source,
@@ -60,6 +70,7 @@ record RevisionResponse(
         Instant createdAt) {
     static RevisionResponse from(LabelRevisionEntity entity) {
         return new RevisionResponse(
+                entity.getId(),
                 entity.getLabel(),
                 entity.getReviewStatus(),
                 entity.getSource(),

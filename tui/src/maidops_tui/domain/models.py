@@ -201,6 +201,7 @@ class LabelRevision:
     review_status: ReviewStatus
     source: LabelSource
     note: str
+    id: int = 0
 
 
 @dataclass

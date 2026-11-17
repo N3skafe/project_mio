@@ -14,8 +14,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
 import lab.maidops.api.ApiException;
@@ -253,6 +254,7 @@ public class TrainingService {
                 Timestamp.from(Instant.now()));
     }
 
+    @Transactional
     public Optional<ClaimedTraining> claim(String trainerId) {
         requireTrainerId(trainerId);
         Instant now = Instant.now();
@@ -665,6 +667,7 @@ public class TrainingService {
                 throw new ApiException(400, "VALIDATION", "모델 파일 크기가 허용 범위를 벗어났습니다.", fileName);
             }
             byte[] bytes = Files.readAllBytes(resolved);
+            requireCheckpointMarkers(bytes, fileName);
             return new StoredFile(fileName, sha256(bytes), bytes.length);
         } catch (IOException exception) {
             throw new ApiException(409, "STATE", "모델 파일을 읽지 못했습니다. 평가를 저장하지 않았습니다.", fileName);
@@ -829,14 +832,14 @@ public class TrainingService {
     private String writeJson(Object value) {
         try {
             return json.writeValueAsString(value);
-        } catch (JsonProcessingException exception) {
+        } catch (JacksonException exception) {
             throw new ApiException(400, "VALIDATION", "학습 결과를 JSON으로 저장하지 못했습니다.", "");
         }
     }
 
     private StoredMetrics readMetrics(String value) {
         try {
-            com.fasterxml.jackson.databind.JsonNode node = json.readTree(value);
+            JsonNode node = json.readTree(value);
             if (node == null || !node.isObject() || (!node.has("macro_f1") && !node.has("macroF1"))) {
                 return StoredMetrics.legacy();
             }
@@ -845,8 +848,22 @@ public class TrainingService {
                 return StoredMetrics.legacy();
             }
             return metrics.withDefaults();
-        } catch (JsonProcessingException exception) {
+        } catch (JacksonException exception) {
             return StoredMetrics.legacy();
+        }
+    }
+
+    private static void requireCheckpointMarkers(byte[] bytes, String fileName) {
+        // PyTorch를 실행하지 않는다. 바이트 안의 형식 문자열만 본다.
+        // 이 확인은 혼동행렬이 그 가중치에서 나왔다는 증거가 아니다.
+        String visible = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+        boolean format = visible.contains("maidops-mlp-v1") || visible.contains("maidops-mlp-v2");
+        if (!format || !visible.contains(TrainingPolicy.EMBEDDING_ID) || !visible.contains(TrainingPolicy.LABEL_SCHEMA)) {
+            throw new ApiException(
+                    400,
+                    "VALIDATION",
+                    "체크포인트에 format, embedding_id, label schema가 없습니다. 이 바이트의 점수는 저장하지 않습니다.",
+                    fileName);
         }
     }
 

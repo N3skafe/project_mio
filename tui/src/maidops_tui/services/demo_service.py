@@ -71,6 +71,7 @@ class DemoService:
         self._resolutions: list[ResolutionRecord] = list(SEED_RESOLUTIONS)
         self._job_seq = 0
         self._case_seq = 0
+        self._revision_seq = 0
         self._resolution_seq = 0
         self._listeners: list[_LISTENER] = []
 
@@ -268,9 +269,18 @@ class DemoService:
         case_id: str,
         decision: ReviewDecision,
         label: ErrorLabel | None = None,
+        expected_revision: int | None = None,
     ) -> ErrorCase:
         async with self._lock:
             case = self._require_case(case_id)
+            latest = case.revisions[-1].id if case.revisions else None
+            if expected_revision is None:
+                expected_revision = latest
+            if expected_revision != latest:
+                raise StateError(
+                    "다른 검토가 먼저 반영되었습니다. 최신 사례를 다시 읽고 검토하세요.",
+                    "" if latest is None else str(latest),
+                )
             note = self._apply_review_locked(case, decision, label)
             case.revisions.append(
                 LabelRevision(
@@ -279,6 +289,7 @@ class DemoService:
                     review_status=case.review_status,
                     source=LabelSource.USER,
                     note=note,
+                    id=self._next_revision_id(),
                 )
             )
             snapshot = self._copy_case(case)
@@ -584,6 +595,7 @@ class DemoService:
                         f"규칙 기반 초안입니다. 규칙 버전 {draft.rule_version}. "
                         f"일치 키워드: {keyword}. 이 값은 정답 확률이 아닙니다."
                     ),
+                    id=self._next_revision_id(),
                 )
             ],
             origin=DataOrigin.SESSION,
@@ -614,6 +626,10 @@ class DemoService:
             text=f"[출력 잘림] 최근 {self.log_limit}줄만 표시합니다.",
         )
         self._outputs[job_id] = [marker, *tail]
+
+    def _next_revision_id(self) -> int:
+        self._revision_seq += 1
+        return self._revision_seq
 
     def _require_job(self, job_id: str) -> Job:
         job = self._jobs.get(job_id)

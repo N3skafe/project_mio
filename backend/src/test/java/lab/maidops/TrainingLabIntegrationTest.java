@@ -24,7 +24,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -116,6 +116,13 @@ class TrainingLabIntegrationTest extends PostgresTestSupport {
         String claimed = claim("trainer-a");
         String modelId = JsonPath.read(claimed, "$.reserved_model_id");
         Files.writeString(MODEL_DIR.resolve(modelId + ".pt"), "not-a-loaded-checkpoint");
+        mockMvc.perform(post("/api/v1/trainer/runs/" + runId + "/complete")
+                        .header("X-Trainer-Id", "trainer-a")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(completeBody(runId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("format")));
+        writeMetadataFixture(modelId);
         String firstModel = complete(modelId, "trainer-a", runId);
         assertThat(firstModel).contains("\"is_default\":false");
         assertThat(JsonPath.<Boolean>read(
@@ -156,7 +163,7 @@ class TrainingLabIntegrationTest extends PostgresTestSupport {
                 String.class,
                 secondRun)).isEqualTo("TRAIN");
         String secondModel = JsonPath.read(secondClaim, "$.reserved_model_id");
-        Files.writeString(MODEL_DIR.resolve(secondModel + ".pt"), "second-checkpoint");
+        writeMetadataFixture(secondModel);
         complete(secondModel, "trainer-b", secondRun);
         assertThat(jdbcTemplate.queryForObject(
                 "select is_default from model_versions where id = ?",
@@ -201,7 +208,7 @@ class TrainingLabIntegrationTest extends PostgresTestSupport {
                         .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8),
                 "$.id");
         String modelId = JsonPath.read(claim("trainer-flag"), "$.reserved_model_id");
-        Files.writeString(MODEL_DIR.resolve(modelId + ".pt"), "not-a-loaded-checkpoint");
+        writeMetadataFixture(modelId);
         String body = completeBody(runId).replace("\"checkpoint_evaluated\": true", "\"checkpoint_evaluated\": false");
         mockMvc.perform(post("/api/v1/trainer/runs/" + runId + "/complete")
                         .header("X-Trainer-Id", "trainer-flag")
@@ -223,7 +230,7 @@ class TrainingLabIntegrationTest extends PostgresTestSupport {
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         String runId = JsonPath.read(created, "$.id");
         String modelId = JsonPath.read(claim("trainer-legacy"), "$.reserved_model_id");
-        Files.writeString(MODEL_DIR.resolve(modelId + ".pt"), "not-a-loaded-checkpoint");
+        writeMetadataFixture(modelId);
         complete(modelId, "trainer-legacy", runId);
         mockMvc.perform(post("/api/v1/model-versions/" + modelId + "/select-default"))
                 .andExpect(status().isOk())
@@ -276,9 +283,20 @@ class TrainingLabIntegrationTest extends PostgresTestSupport {
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
     }
 
+    private static void writeMetadataFixture(String modelId) throws Exception {
+        Files.writeString(
+                MODEL_DIR.resolve(modelId + ".pt"),
+                """
+                fixture-not-a-loaded-checkpoint
+                format=maidops-mlp-v2
+                embedding_id=hashing-char-ngram-v1
+                label_schema_version=labels-1
+                """);
+    }
+
     private String complete(String modelId, String trainerId, String runId) throws Exception {
-        // 서버 계약만 확인한다. 이 파일 바이트는 PyTorch 체크포인트가 아니고 서버도 로드하지 않는다.
-        // checkpoint_evaluated는 학습기 표시다. 이 테스트가 그 표시를 보낸다고 실제 재로드 평가가 된 것은 아니다.
+        // 서버 계약만 확인한다. 이 파일은 형식 문자열이 있는 fixture이고 PyTorch 체크포인트가 아니다.
+        // 서버는 그 바이트를 로드하지 않는다. checkpoint_evaluated 표시를 보낸다고 실측 재평가가 된 것은 아니다.
         String body = completeBody(runId);
         return mockMvc.perform(post("/api/v1/trainer/runs/" + runId + "/complete")
                         .header("X-Trainer-Id", trainerId)

@@ -51,7 +51,7 @@ DEMO는 이전과 같이 메모리의 `DemoService`입니다. LIVE는 `ApiServic
 TUI LIVE
   -> ApiService (httpx)
   -> GET /api/v1/health
-  -> Spring Boot 3.5.16
+  -> Spring Boot 4.1.2
   -> PostgreSQL
 ```
 
@@ -119,12 +119,18 @@ scripts/run-live.ps1
 
 Compose healthcheck는 컨테이너 안 alive 파일입니다. API의 `CONNECTED`는 `worker_sessions` 또는 `trainer_sessions`의 최근 heartbeat입니다. 백엔드만 띄우면 두 필드는 `NOT_CONNECTED`가 맞습니다. DEMO는 Compose를 요구하지 않습니다.
 
+## PHASE 10 신뢰성
+
+워커는 감독이 끊기면 프로세스 트리를 끝내고 실패로 남깁니다. 출력 한도 초과와 감독 실패는 종료 코드 0이어도 성공이 아닙니다. 로그는 실행 중 배치로 저장하고, 확인되지 않은 배치는 워커 종료 시 사라지며 작업을 다시 넣지 않습니다.
+
+검토는 `expected_revision`이 최신 `label_revisions.id`와 같을 때만 반영합니다. 학습 complete는 체크포인트 바이트에 `maidops-mlp-v2`(또는 v1), `hashing-char-ngram-v1`, `labels-1`이 없으면 거절합니다. 서버는 그 파일을 PyTorch로 실행하지 않으므로, 이 가드는 제출 행렬의 실측 증거가 아닙니다.
+
 ## 선택한 이후 단계 버전
 
 PHASE 1 의존성 위에 백엔드를 올렸습니다.
 
 - Java 21. 이 세션의 백엔드 테스트 런타임은 Temurin 21.0.12.1입니다. 기본 `JAVA_HOME`은 JDK 11이고 `C:\Program Files\Java\jdk-21`은 이 PC에 없습니다. 빌드 전에 JDK 21을 `JAVA_HOME`으로 지정합니다.
-- Spring Boot 3.5.16. 2026-06-25 릴리스이며 Java 17 이상이라 Java 21과 맞습니다. 근거는 [v3.5.16 릴리스](https://github.com/spring-projects/spring-boot/releases/tag/v3.5.16)입니다. Spring Boot 4.1.1도 Java 21을 지원하지만 Spring Framework 7 전환이 포함되므로 3.5 선을 유지합니다.
+- Spring Boot 4.1.2. 2026-10-22 릴리스이며 Java 17 이상이라 Java 21과 맞습니다. Spring Boot 3.5.x OSS 지원은 2026-06-30에 끝났고, 그 parent가 IDE의 BOOT_VERSION_VALIDATION 경고 원인입니다. 4.0.x OSS는 2026-12-31에 끝나므로 쓰지 않습니다. Maven Central `spring-boot-starter-parent` 메타데이터에서 4.1 안정 최신으로 확인한 버전은 4.1.2입니다. 근거는 [v4.1.2 릴리스](https://github.com/spring-projects/spring-boot/releases/tag/v4.1.2), [4.0 마이그레이션 가이드](https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-4.0-Migration-Guide), [지원 일정](https://spring.io/projects/spring-boot#support)입니다.
 
 - Python 3.11. 개발 머신에서 `py -3.11`은 3.11.9였다.
 - Textual 8.2.8. 2026-10-06에 PyPI 안정 최신으로 확인했고, 설치본의 `App.run_test`, `Binding.priority`, `RichLog.write`, `ContentSwitcher`, `HORIZONTAL_BREAKPOINTS`를 확인한 뒤 사용했다.

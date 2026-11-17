@@ -21,7 +21,7 @@ import lab.maidops.worker.WorkerJobService;
 import lab.maidops.worker.WorkerJobService.FinishRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -215,7 +215,7 @@ class IntakeIntegrationTest extends PostgresTestSupport {
         String caseId = JsonPath.read(body, "$.id");
         mockMvc.perform(post("/api/v1/error-cases/" + caseId + "/reviews")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"decision\":\"REVISE\",\"label\":\"OTHER\"}"))
+                        .content(ReviewBodies.json(mockMvc, caseId, "REVISE", "OTHER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.draft_source").value("RULE_BASED"))
                 .andExpect(jsonPath("$.current_label").value("OTHER"))
@@ -240,7 +240,7 @@ class IntakeIntegrationTest extends PostgresTestSupport {
         String deferredId = JsonPath.read(deferred, "$.id");
         mockMvc.perform(post("/api/v1/error-cases/" + deferredId + "/reviews")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"decision\":\"DEFER\"}"))
+                        .content(ReviewBodies.json(mockMvc, deferredId, "DEFER", null)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.confirmed_label").value(nullValue()));
         String confirmed = mockMvc.perform(get("/api/v1/error-cases/confirmed"))

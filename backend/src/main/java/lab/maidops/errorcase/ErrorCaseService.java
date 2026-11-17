@@ -16,6 +16,7 @@ import lab.maidops.job.IdAllocator;
 import lab.maidops.resolution.ResolutionEntity;
 import lab.maidops.resolution.ResolutionRepository;
 import lab.maidops.resolution.ResolutionResponse;
+import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,14 +25,17 @@ public class ErrorCaseService {
     private final ErrorCaseRepository cases;
     private final ResolutionRepository resolutions;
     private final IdAllocator ids;
+    private final EntityManager entityManager;
 
     public ErrorCaseService(
             ErrorCaseRepository cases,
             ResolutionRepository resolutions,
-            IdAllocator ids) {
+            IdAllocator ids,
+            EntityManager entityManager) {
         this.cases = cases;
         this.resolutions = resolutions;
         this.ids = ids;
+        this.entityManager = entityManager;
     }
 
     @Transactional(readOnly = true)
@@ -67,8 +71,24 @@ public class ErrorCaseService {
     }
 
     @Transactional
-    public ErrorCaseResponse review(String caseId, ReviewDecision decision, ErrorLabel label) {
-        ErrorCaseEntity errorCase = require(caseId);
+    public ErrorCaseResponse review(String caseId, ReviewDecision decision, ErrorLabel label, Long expectedRevision) {
+        ErrorCaseEntity errorCase = cases.findByIdForUpdate(caseId)
+                .orElseThrow(() -> new ApiException(404, "NOT_FOUND", "오류 사례를 찾지 못했습니다: " + caseId, "/review"));
+        if (errorCase.getInferenceState() == InferenceState.PENDING || errorCase.getCurrentLabel() == null) {
+            throw new ApiException(
+                    409,
+                    "STATE",
+                    "모델 초안이 아직 없습니다. 승인, 수정, 보류를 하지 않습니다.",
+                    "초안이 도착한 뒤 검토하세요.");
+        }
+        Long latest = latestRevisionId(errorCase);
+        if (latest == null || expectedRevision == null || !latest.equals(expectedRevision)) {
+            throw new ApiException(
+                    409,
+                    "STATE",
+                    "다른 검토가 먼저 반영되었습니다. 최신 사례를 다시 읽고 검토하세요.",
+                    latest == null ? "" : Long.toString(latest));
+        }
         String note = apply(errorCase, decision, label);
         errorCase.addRevision(LabelRevisionEntity.create(
                 errorCase.getCurrentLabel(),
@@ -76,6 +96,7 @@ public class ErrorCaseService {
                 LabelSource.USER,
                 note,
                 Instant.now()));
+        entityManager.flush();
         return ErrorCaseResponse.from(errorCase);
     }
 
@@ -129,6 +150,17 @@ public class ErrorCaseService {
             return "사용자가 라벨을 수정했습니다. 학습은 시작하지 않습니다.";
         }
         throw new ApiException(400, "VALIDATION", "지원하지 않는 검토 결정입니다.", "");
+    }
+
+    private static Long latestRevisionId(ErrorCaseEntity errorCase) {
+        Long latest = null;
+        for (LabelRevisionEntity revision : errorCase.getRevisions()) {
+            Long id = revision.getId();
+            if (id != null && (latest == null || id > latest)) {
+                latest = id;
+            }
+        }
+        return latest;
     }
 
     private ErrorCaseEntity require(String caseId) {

@@ -3,10 +3,13 @@ package lab.maidops.errorcase;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import lab.maidops.domain.ReviewStatus;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -42,4 +45,8 @@ public interface ErrorCaseRepository extends JpaRepository<ErrorCaseEntity, Stri
     List<ErrorCaseEntity> findByReviewStatusInOrderByCreatedAtAscIdAsc(Collection<ReviewStatus> statuses);
 
     long countByReviewStatus(ReviewStatus status);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select errorCase from ErrorCaseEntity errorCase where errorCase.id = :id")
+    Optional<ErrorCaseEntity> findByIdForUpdate(@Param("id") String id);
 }

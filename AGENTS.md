@@ -14,6 +14,7 @@
 - PHASE 7 유사 검색은 확정 기록만 `hashing-char-ngram-v1` 코사인으로 찾고, 답변은 그 기록만 인용한다. 키워드 검색은 유지한다. 외부 LLM과 유료 임베딩 API는 없다. 같은 사례는 hit에서 제외한다.
 - PHASE 8 Review는 초안 근거, 유사 요약, 라벨 점검 목록을 보여 준다. 점검 목록은 확정 라벨이나 학습 점수가 아니다.
 - PHASE 9 LIVE 기동은 `scripts/run-live.ps1`이 기존 Compose를 띄운다. health의 `worker`와 `trainer`는 heartbeat가 있을 때만 CONNECTED다. 없는 연결을 성공으로 적지 않는다. DEMO는 Docker를 요구하지 않는다.
+- PHASE 10 검토는 `expected_revision`이 최신 개정과 같을 때만 반영한다. 학습 complete는 체크포인트 형식 문자열이 없으면 거절하고, 서버는 PyTorch로 그 파일을 실행하지 않는다. 출력 한도 초과와 감독 실패는 성공으로 닫지 않는다.
 - 워커가 죽어도 작업을 자동으로 다시 넣지 않는다. 끊긴 학습도 다시 큐에 넣지 않는다.
 
 ## 구현 규칙

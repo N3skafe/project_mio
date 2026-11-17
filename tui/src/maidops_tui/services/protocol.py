@@ -90,6 +90,7 @@ class LabService(Protocol):
         case_id: str,
         decision: ReviewDecision,
         label: ErrorLabel | None = None,
+        expected_revision: int | None = None,
     ) -> ErrorCase: ...
 
     async def save_resolution(self, case_id: str, cause: str, method: str) -> ResolutionRecord: ...

@@ -9,8 +9,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import lab.maidops.domain.ErrorLabel;
 import lab.maidops.lab.ClassificationMetrics;
 import lab.maidops.lab.ClassificationMetrics.ClassScore;
@@ -24,12 +24,12 @@ class MetricsFixtureTest {
         if (!Files.exists(path)) {
             path = Path.of("..", "contracts", "metrics", "supported-class-macro-f1-v2.json");
         }
-        JsonNode document = new ObjectMapper().readTree(path.toFile());
-        assertThat(document.get("metric_policy").asText()).isEqualTo(ClassificationMetrics.METRIC_POLICY);
-        assertThat(document.get("row_meaning").asText()).isEqualTo("actual");
-        assertThat(document.get("column_meaning").asText()).isEqualTo("predicted");
+        JsonNode document = JsonMapper.builder().build().readTree(path.toFile());
+        assertThat(document.get("metric_policy").asString()).isEqualTo(ClassificationMetrics.METRIC_POLICY);
+        assertThat(document.get("row_meaning").asString()).isEqualTo("actual");
+        assertThat(document.get("column_meaning").asString()).isEqualTo("predicted");
         List<String> order = new ArrayList<>();
-        document.get("label_order").forEach(node -> order.add(node.asText()));
+        document.get("label_order").forEach(node -> order.add(node.asString()));
         assertThat(order).containsExactly("DB_CONNECTION", "AUTH_PERMISSION", "EXTERNAL_NETWORK", "INPUT_VALIDATION", "OTHER");
         for (JsonNode item : document.get("cases")) {
             int[][] matrix = matrix(item.get("matrix"));
@@ -37,7 +37,7 @@ class MetricsFixtureTest {
                 Report report = ClassificationMetrics.fromConfusion(matrix);
                 List<ClassScore> swapped = new ArrayList<>();
                 for (JsonNode label : item.get("submitted_label_order")) {
-                    ErrorLabel wanted = ErrorLabel.valueOf(label.asText());
+                    ErrorLabel wanted = ErrorLabel.valueOf(label.asString());
                     swapped.add(report.perClass().stream()
                             .filter(score -> score.label() == wanted)
                             .findFirst()
@@ -63,12 +63,12 @@ class MetricsFixtureTest {
                     .map(score -> score.label().name())
                     .toList();
             List<String> expectedIncluded = new ArrayList<>();
-            item.get("included_labels").forEach(node -> expectedIncluded.add(node.asText()));
+            item.get("included_labels").forEach(node -> expectedIncluded.add(node.asString()));
             assertThat(included).isEqualTo(expectedIncluded);
             if (item.has("per_class")) {
                 for (JsonNode expected : item.get("per_class")) {
                     ClassScore actual = report.perClass().stream()
-                            .filter(score -> score.label() == ErrorLabel.valueOf(expected.get("label").asText()))
+                            .filter(score -> score.label() == ErrorLabel.valueOf(expected.get("label").asString()))
                             .findFirst()
                             .orElseThrow();
                     assertThat(actual.support()).isEqualTo(expected.get("support").asInt());
@@ -107,7 +107,7 @@ class MetricsFixtureTest {
         if (node == null || node.isNull()) {
             return null;
         }
-        String text = node.asText();
+        String text = node.asString();
         if (text.contains("/")) {
             String[] parts = text.split("/");
             return Double.parseDouble(parts[0]) / Double.parseDouble(parts[1]);
@@ -117,6 +117,6 @@ class MetricsFixtureTest {
 
     private static String text(JsonNode node, String field) {
         JsonNode value = node.get(field);
-        return value == null || value.isNull() ? null : value.asText();
+        return value == null || value.isNull() ? null : value.asString();
     }
 }

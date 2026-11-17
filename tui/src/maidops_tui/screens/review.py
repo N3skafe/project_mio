@@ -140,8 +140,15 @@ class ReviewView(Vertical):
             except ValueError:
                 app.write_activity("오류: 수정할 라벨을 선택하세요.")
                 return
+        selected = self._cases.get(self.selected_case_id)
+        expected = selected.revisions[-1].id if selected is not None and selected.revisions else None
         try:
-            case = await app.service.review_error_case(self.selected_case_id, decision, label)
+            case = await app.service.review_error_case(
+                self.selected_case_id,
+                decision,
+                label,
+                expected_revision=expected,
+            )
         except LabError as exc:
             _write_action_error(app, exc)
             return

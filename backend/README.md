@@ -1,6 +1,6 @@
 # backend
 
-PHASE 2 API입니다. Java 21, Spring Boot 3.5.16, Flyway, PostgreSQL을 사용합니다. 버전 근거는 `docs/ARCHITECTURE.md`에 있습니다.
+PHASE 2 API입니다. Java 21, Spring Boot 4.1.2, Flyway, PostgreSQL을 사용합니다. 3.5.x OSS 지원 종료 경고를 피하려고 4.1.2로 올렸습니다. 버전 근거는 `docs/ARCHITECTURE.md`에 있습니다.
 
 이 프로세스는 등록된 작업을 셸로 실행하지 않습니다. `POST /api/v1/jobs`는 작업을 `QUEUED`로 저장합니다. 실행은 `worker/`가, MLP 학습은 `trainer/`가 담당합니다. 조건이 부족한 학습은 행을 만들지 않습니다. 서버는 모델 파일을 PyTorch로 열지 않고 체크섬만 확인합니다.
 

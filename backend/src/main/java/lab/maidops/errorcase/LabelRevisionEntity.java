@@ -65,6 +65,10 @@ public class LabelRevisionEntity {
         this.errorCase = errorCase;
     }
 
+    public Long getId() {
+        return id;
+    }
+
     public ErrorLabel getLabel() {
         return label;
     }

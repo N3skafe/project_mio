@@ -41,7 +41,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -245,11 +245,11 @@ class ApiIntegrationTest extends PostgresTestSupport {
                 .andExpect(status().isConflict());
         mockMvc.perform(post("/api/v1/error-cases/case-manual-0001/reviews")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"decision\":\"REVISE\",\"label\":\"DB_CONNECTION\"}"))
+                        .content(ReviewBodies.json(mockMvc, "case-manual-0001", "REVISE", "DB_CONNECTION")))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(post("/api/v1/error-cases/case-manual-0001/reviews")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"decision\":\"REVISE\",\"label\":\"AUTH_PERMISSION\"}"))
+                        .content(ReviewBodies.json(mockMvc, "case-manual-0001", "REVISE", "AUTH_PERMISSION")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.review_status").value("REVISED"))
                 .andExpect(jsonPath("$.draft_label").value("DB_CONNECTION"))
@@ -363,14 +363,20 @@ class ApiIntegrationTest extends PostgresTestSupport {
                 .andExpect(jsonPath("$.score").doesNotExist());
         assertThat(confirmedBody()).doesNotContain(draftId);
 
+        String deferBody = ReviewBodies.json(mockMvc, draftId, "DEFER", null);
         mockMvc.perform(post("/api/v1/error-cases/" + draftId + "/reviews")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"decision\":\"DEFER\"}"))
+                        .content(deferBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.review_status").value("DEFERRED"))
                 .andExpect(jsonPath("$.draft_label").value("DB_CONNECTION"))
                 .andExpect(jsonPath("$.confirmed_label").value(nullValue()))
                 .andExpect(jsonPath("$.revisions[1].source").value("USER"));
+        mockMvc.perform(post("/api/v1/error-cases/" + draftId + "/reviews")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deferBody))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("다른 검토가 먼저")));
         assertThat(confirmedBody()).doesNotContain(draftId);
 
         String second = JsonPath.read(createJob("idem-rule-input-01", "trusted-sample", "sample-fail"), "$.id");
@@ -382,7 +388,7 @@ class ApiIntegrationTest extends PostgresTestSupport {
         String inputId = caseIdContaining("required field email");
         mockMvc.perform(post("/api/v1/error-cases/" + inputId + "/reviews")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"decision\":\"REVISE\",\"label\":\"OTHER\"}"))
+                        .content(ReviewBodies.json(mockMvc, inputId, "REVISE", "OTHER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.draft_label").value("INPUT_VALIDATION"))
                 .andExpect(jsonPath("$.draft_source").value("RULE_BASED"))

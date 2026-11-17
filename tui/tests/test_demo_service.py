@@ -91,6 +91,13 @@ async def test_review_approve_revise_defer_and_resolution() -> None:
         assert revised.review_status is ReviewStatus.REVISED
         assert revised.current_label is ErrorLabel.AUTH_PERMISSION
         assert revised.revisions[-1].source is LabelSource.USER
+        stale = case.revisions[-1].id
+        with pytest.raises(StateError, match="다른 검토"):
+            await service.review_error_case(
+                case.id,
+                ReviewDecision.DEFER,
+                expected_revision=stale,
+            )
         assert revised.confirmed_label is ErrorLabel.AUTH_PERMISSION
         assert revised.draft_label is ErrorLabel.DB_CONNECTION
         deferred = await service.review_error_case(case.id, ReviewDecision.DEFER)

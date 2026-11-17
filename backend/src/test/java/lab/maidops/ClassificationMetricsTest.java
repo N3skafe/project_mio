@@ -33,6 +33,27 @@ class ClassificationMetricsTest {
     }
 
     @Test
+    void supportedClassWithNoPredictionsLowersMacroF1() {
+        Report report = ClassificationMetrics.fromConfusion(new int[][] {
+                {2, 0, 0, 0, 0},
+                {0, 2, 0, 0, 0},
+                {0, 0, 0, 0, 0},
+                {0, 0, 2, 0, 0},
+                {0, 0, 0, 0, 0}
+        });
+        ClassScore input = report.perClass().get(3);
+        assertThat(input.label()).isEqualTo(ErrorLabel.INPUT_VALIDATION);
+        assertThat(input.support()).isEqualTo(2);
+        assertThat(input.predictedCount()).isZero();
+        assertThat(input.precision()).isEqualTo(0.0);
+        assertThat(input.recall()).isEqualTo(0.0);
+        assertThat(input.f1()).isEqualTo(0.0);
+        assertThat(input.includedInMacro()).isTrue();
+        assertThat(report.perClass().get(2).f1()).isNull();
+        assertThat(report.macroF1()).isEqualTo(2.0 / 3.0);
+    }
+
+    @Test
     void aMismatchedScoreIsRejected() {
         Report report = ClassificationMetrics.fromConfusion(new int[][] {
                 {1, 0, 0, 0, 0},

@@ -2,9 +2,9 @@ package lab.maidops.worker;
 
 import java.util.List;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import lab.maidops.api.ApiException;
 import lab.maidops.job.JobResponse;
 import lab.maidops.worker.WorkerJobService.ClaimedJob;
@@ -81,7 +81,7 @@ public class WorkerController {
         if (node == null || node.isNull()) {
             return null;
         }
-        String text = node.asText();
+        String text = node.asString();
         return text.isBlank() ? null : text;
     }
 }

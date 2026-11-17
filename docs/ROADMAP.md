@@ -27,6 +27,10 @@
 | 사용자 프로젝트·작업 등록과 실패 로그 가져오기 | PHASE 6 | 완료. LIVE만. `{python}`과 workspace 안 경로만 등록. 가져오기는 작업을 만들지 않음 |
 | 초안 근거, 유사 요약, 라벨 점검 목록 | PHASE 8 | 완료. 자신 hit 제외. 체크리스트는 조언이며 학습 점수가 아님 |
 | LIVE 원클릭 기동, 사전 점검, health의 worker/trainer 구분 | PHASE 9 | 완료. Compose 풀스택은 heartbeat로 CONNECTED. 백엔드만 켜면 NOT_CONNECTED. DEMO는 Docker 불필요 |
+| 워커 감독 실패 정리, 출력 한도 실패, 로그 마스킹, macro F1 일치 | PHASE 10 | 완료. 상태·하트비트·출력 예외는 프로세스 트리를 끝내고 성공으로 닫지 않음 |
+| 검토 revision 충돌 방지 | PHASE 10 | 완료. `expected_revision`이 최신 개정과 다르면 409. 갱신은 행 잠금 |
+| 학습 complete 체크포인트 형식 가드 | PHASE 10 | 완료. 서버는 PyTorch를 실행하지 않고 format·embedding·label schema 문자열이 없으면 거절 |
+| 실행 중 로그 배치 전송 | PHASE 10 | 완료. 미확인 배치는 워커가 죽으면 남지 않음. 작업은 다시 큐에 넣지 않음 |
 | Redis, Kafka, Kubernetes, 다중 에이전트 | 초기 범위 밖 | 미구현 |
 
-PHASE 2를 시작할 때 Spring Boot 3.5.16과 Java 21을 기준으로 한다. 이유는 `docs/ARCHITECTURE.md`에 있다.
+백엔드는 Spring Boot 4.1.2와 Java 21을 사용한다. 3.5.x OSS 지원이 끝나 IDE 경고를 피하려고 4.1.2로 올렸다. 이유는 `docs/ARCHITECTURE.md`에 있다.

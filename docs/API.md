@@ -88,6 +88,8 @@ finish 본문은 `exit_code`, `process_exited`, `timed_out`, `output_truncated`,
 
 `POST /api/v1/projects/{id}/tasks` 본문은 `id`, `name`, `plan_text`, `argv_json`, `relative_workdir`, `timeout_seconds`입니다. `registered_tasks.id`는 기본키라 작업 id는 프로젝트와 상관없이 전체에서 유일합니다. 같은 id를 다시 등록하면 409 `STATE`이고 메시지에 전체 유일을 적습니다. 스키마는 복합키로 바꾸지 않습니다. `argv_json`은 문자열 배열이고 첫 토큰은 `{python}`만 허용합니다. `relative_workdir`와 스크립트는 workspace 루트 안의 존재하는 디렉터리와 파일이어야 합니다. 등록 시 `RegisteredCommandResolver`가 거절하고, 실행 시 워커가 다시 검사합니다. `timeout_seconds`는 1 이상 120 이하입니다. 없는 스크립트, 절대 경로, 경로 탈출, workspace 밖, 셸 연산자, 다른 실행 파일은 400 `VALIDATION`입니다.
 
+학습 complete는 모델 파일 바이트에 `maidops-mlp-v1` 또는 `maidops-mlp-v2`, `hashing-char-ngram-v1`, `labels-1`이 없으면 400입니다. 서버는 PyTorch를 실행하지 않으므로 이 거절은 행렬이 가중치에서 나왔다는 검증이 아닙니다.
+
 `POST /api/v1/error-cases/import` 본문은 `project_id`, `raw_log` 또는 `lines`, 선택 `source_hint` 또는 `title`입니다. 로그는 8000자 이하입니다. 빈 로그와 없는 프로젝트는 거절합니다. 저장 전에 워커와 같은 비밀 가리기를 적용합니다. 초안은 작업 실패와 같은 경로입니다. 기본 모델이 없거나 모델 파일이 없으면 `RULE_BASED`와 `rules-1`로 닫고 다시 추론하지 않습니다. 기본 모델 파일이 체크섬과 맞으면 `MODEL`이고 `inference_state`는 `PENDING`입니다. `origin`은 `IMPORT`이고 `job_id`는 null입니다. 성공 작업을 만들지 않습니다. 승인, 수정, 보류, 해결 메모는 기존 검토 API를 사용합니다.
 
 ## 오류 라벨
@@ -96,7 +98,7 @@ finish 본문은 `exit_code`, `process_exited`, `timed_out`, `output_truncated`,
 
 `confirmed_label`은 `review_status`가 `APPROVED` 또는 `REVISED`일 때만 `current_label`과 같습니다. `DRAFT`와 `DEFERRED`는 `confirmed_label`이 null입니다. `GET /api/v1/error-cases/confirmed`는 승인·수정된 사례만 반환합니다.
 
-`revisions`가 변경 이력입니다. 초안 행의 `source`는 `RULE_BASED`이고, 승인·수정·보류 행의 `source`는 `USER`입니다. 원인과 해결 방법은 승인 또는 수정 뒤에 저장합니다.
+`revisions`가 변경 이력입니다. 각 행의 `id`가 개정 번호이고, 사례의 `latest_revision_id`는 그 중 가장 큰 id입니다. 초안 행의 `source`는 `RULE_BASED`이고, 승인·수정·보류 행의 `source`는 `USER`입니다. `POST /api/v1/error-cases/{id}/reviews` 본문은 `decision`, 수정일 때 `label`, 그리고 `expected_revision`입니다. `expected_revision`이 `latest_revision_id`와 다르거나 없으면 409 `STATE`이고 행은 바꾸지 않습니다. 갱신은 그 오류 사례 행을 잠급니다. 원인과 해결 방법은 승인 또는 수정 뒤에 저장합니다.
 
 `GET /api/v1/search?q=`는 작업 로그, 오류 원문, 원인, 해결 방법을 키워드로 찾습니다. 일치가 없으면 `items`가 빈 배열입니다. 이 경로는 유지합니다.
 

@@ -6,6 +6,7 @@ import lab.maidops.resolution.ResolutionRequest;
 import lab.maidops.resolution.ResolutionResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+@Validated
 @RestController
 @RequestMapping("/api/v1/error-cases")
 public class ErrorCaseController {
@@ -40,7 +42,7 @@ public class ErrorCaseController {
 
     @PostMapping("/import")
     @ResponseStatus(HttpStatus.CREATED)
-    public ErrorCaseResponse importLog(@RequestBody ImportLogRequest request) {
+    public ErrorCaseResponse importLog(@RequestBody(required = false) ImportLogRequest request) {
         if (request == null) {
             request = new ImportLogRequest(null, null, null, null, null);
         }
@@ -59,7 +61,7 @@ public class ErrorCaseController {
 
     @PostMapping("/{id}/reviews")
     public ErrorCaseResponse review(@PathVariable String id, @Valid @RequestBody ReviewRequest request) {
-        return cases.review(id, request.decision(), request.label());
+        return cases.review(id, request.decision(), request.label(), request.expectedRevision());
     }
 
     @PostMapping("/{id}/resolutions")

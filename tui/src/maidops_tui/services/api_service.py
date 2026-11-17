@@ -240,8 +240,11 @@ class ApiService:
         case_id: str,
         decision: ReviewDecision,
         label: ErrorLabel | None = None,
+        expected_revision: int | None = None,
     ) -> ErrorCase:
-        body: dict[str, str] = {"decision": decision.value}
+        if expected_revision is None:
+            raise StateError("검토 기준 revision이 없습니다. 최신 사례를 다시 읽으세요.", "/review")
+        body: dict[str, object] = {"decision": decision.value, "expected_revision": expected_revision}
         if label is not None:
             body["label"] = label.value
         case = _case(await self._send_json("POST", f"/api/v1/error-cases/{case_id}/reviews", json=body))
@@ -462,6 +465,7 @@ def _case(item: dict[str, Any]) -> ErrorCase:
             review_status=ReviewStatus(str(revision["review_status"])),
             source=LabelSource(str(revision["source"])),
             note=str(revision["note"]),
+            id=int(revision["id"]),
         )
         for revision in item.get("revisions", [])
     ]

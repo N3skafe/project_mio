@@ -18,9 +18,11 @@ spring:
   flyway:
     enabled: true
   jackson:
+    use-jackson2-defaults: true
     property-naming-strategy: SNAKE_CASE
-    serialization:
-      write-dates-as-timestamps: false
+    datatype:
+      datetime:
+        write-dates-as-timestamps: false
 
 management:
   endpoints:

@@ -6,5 +6,6 @@ import jakarta.validation.constraints.NotNull;
 
 public record ReviewRequest(
         @NotNull(message = "decision이 필요합니다.") ReviewDecision decision,
-        ErrorLabel label) {
+        ErrorLabel label,
+        Long expectedRevision) {
 }
